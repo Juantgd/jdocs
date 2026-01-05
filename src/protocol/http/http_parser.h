@@ -3,12 +3,8 @@
 #ifndef JDOCS_PROTOCOL_HTTP_PARSER_H_
 #define JDOCS_PROTOCOL_HTTP_PARSER_H_
 
+#include <cstddef>
 #include <cstdint>
-
-#include <openssl/evp.h>
-#include <openssl/sha.h>
-
-#include "parser.h"
 
 namespace jdocs {
 
@@ -106,47 +102,20 @@ constexpr const char *errors_desc_table[] = {
 #undef X
 };
 
-#define kHttpResponse400                                                       \
-  "HTTP/1.1 400 Bad Request\r\nServer: jdocs_server\r\nContent-Type: "         \
-  "text/plain; charset-utf8\r\nContent-Length: 26\r\nConnection: "             \
-  "Close\r\n\r\nInvalid Handshake Request!"
-#define kHttpResponse101                                                       \
-  "HTTP/1.1 101 Switching Protocols\r\nConnection: Upgrade\r\n"                \
-  "Upgrade: websocket\r\n"                                                     \
-  "Server: jdocs_server\r\n"                                                   \
-  "Sec-WebSocket-Accept: "
-
-// 用于生成sec-websocket-accept的值
-static int generate_accept_key(const char *key, char *buffer) {
-  u_char tmp[20];
-  SHA1((u_char *)key, 60, tmp);
-  return EVP_EncodeBlock((u_char *)buffer, tmp, 20);
-}
-
 } // namespace
 
-class HttpParser : public Parser {
-public:
+struct HttpParser {
   HttpParser() = default;
   ~HttpParser() = default;
 
-  size_t ParserExecute(void *buffer, size_t length) override;
-  inline bool IsDone() const override {
+  size_t ParserExecute(void *buffer, size_t length);
+  inline bool IsDone() const {
     return state_ == parser_state_t::kHttpParserDone;
   }
-  void Reset() override;
-  inline int GetErrorCode() const override { return error_code_; }
-  const char *GetError() const override {
-    return errors_desc_table[error_code_];
-  }
+  void Reset();
+  inline int GetErrorCode() const { return error_code_; }
+  const char *GetError() const { return errors_desc_table[error_code_]; }
 
-  inline const char *GetWebSocketKey() const { return websocket_key_; }
-
-  static size_t generate_response_101(void *buffer, const char *key);
-
-  static size_t generate_response_400(void *buffer);
-
-private:
   enum class parser_state_t {
     kHttpParserStart = 0,
     kHttpParserMethod,

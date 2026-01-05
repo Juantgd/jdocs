@@ -251,7 +251,7 @@ int EventLoop::handle_fd_pass(struct io_uring_cqe *cqe) {
   }
   spdlog::info("[{}] Accepted a new fd: {}", worker_->GetName(), cqe->res);
   uint32_t conn_id = cqe_to_conn_id(cqe);
-  server_->AddConnection(
+  worker_->AddConnection(
       conn_id, std::make_shared<TcpConnection>(this, cqe->res, conn_id));
   // 开始发起接受请求
   __prep_recv(cqe->res, conn_id);
@@ -260,18 +260,19 @@ int EventLoop::handle_fd_pass(struct io_uring_cqe *cqe) {
 
 int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
   if (cqe->res < 0) {
-    if (cqe->res != -ENOBUFS || cqe->res != -ECANCELED) {
+    if (cqe->res == -ENOBUFS) {
+      spdlog::info("[{}] no avaliable buffers", worker_->GetName());
+      // 需要对缓冲池进行扩容，并重新提交接受数据请求
+      buffer_pool_->alloc_recv_buffers();
+      __prep_recv(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
+    } else if (cqe->res != -ECANCELED) {
       spdlog::error("recv multishot failed. error: {}", strerror(-cqe->res));
       return -1;
     }
-    spdlog::info("[{}] no avaliable buffers", worker_->GetName());
-    // 需要对缓冲池进行扩容，并重新提交接受数据请求
-    buffer_pool_->alloc_recv_buffers();
-    __prep_recv(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
     return 0;
   }
   std::shared_ptr<TcpConnection> connection =
-      server_->GetConnection(cqe_to_conn_id(cqe));
+      worker_->GetConnection(cqe_to_conn_id(cqe));
   int fd = cqe_to_fd(cqe);
   if (!(cqe->flags & IORING_CQE_F_BUFFER)) {
     // 说明客户端关闭连接
@@ -315,7 +316,7 @@ int EventLoop::handle_send(struct io_uring_cqe *cqe) {
     return -1;
   }
   std::shared_ptr<TcpConnection> connection =
-      server_->GetConnection(cqe_to_conn_id(cqe));
+      worker_->GetConnection(cqe_to_conn_id(cqe));
   if (!connection->closed())
     connection->SendHandle(buffer_addr, static_cast<size_t>(cqe->res));
   spdlog::info("[{}] send {} bytes to fd: {}", worker_->GetName(), cqe->res,
@@ -338,7 +339,7 @@ int EventLoop::handle_send_zc(struct io_uring_cqe *cqe) {
     buffer_pool_->ReplenishSendBuffer(bidx);
   } else {
     std::shared_ptr<TcpConnection> connection =
-        server_->GetConnection(cqe_to_conn_id(cqe));
+        worker_->GetConnection(cqe_to_conn_id(cqe));
     void *buffer_addr = buffer_pool_->GetRecvBuffer(bidx);
     if (buffer_addr == NULL) {
       spdlog::error("[{}] invalid buffer, buffer_index: {}", worker_->GetName(),
@@ -377,7 +378,7 @@ int EventLoop::handle_close(struct io_uring_cqe *cqe) {
   } else {
     spdlog::info("[master] connection closed, fd: {}", cqe_to_fd(cqe));
   }
-  server_->DelConnection(cqe_to_conn_id(cqe));
+  worker_->DelConnection(cqe_to_conn_id(cqe));
   return 0;
 }
 

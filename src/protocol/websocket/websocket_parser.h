@@ -3,15 +3,13 @@
 #ifndef JDOCS_PROTOCOL_WEBSOCKET_PARSER_H_
 #define JDOCS_PROTOCOL_WEBSOCKET_PARSER_H_
 
+#include <cstddef>
 #include <cstdint>
-
-#include "parser.h"
+#include <string>
 
 namespace jdocs {
 
 namespace {
-// websocket协议最大载荷长度限制，64KB大小
-constexpr const uint32_t kMaxPayloadLength = 1 << 16;
 
 #define WS_OPCODE_MAP(X)                                                       \
   X(0x0, CONTINUED)                                                            \
@@ -38,45 +36,29 @@ constexpr const uint32_t kMaxPayloadLength = 1 << 16;
 
 } // namespace
 
-class WebSocketParser : public Parser {
-public:
+// websocket协议最大载荷长度限制，64KB大小
+constexpr const uint32_t kMaxPayloadLength = 1 << 16;
+
+struct WebSocketParser {
   WebSocketParser() = default;
   ~WebSocketParser() = default;
 
-  enum ws_opcode_t {
+  size_t ParserExecute(void *buffer, size_t length);
+  inline bool IsDone() const { return state_ == parser_state_t::kWsParserDone; }
+  void Reset();
+  inline int GetErrorCode() const { return error_code_; }
+  const char *GetError() const;
+
+  static const char *close_message(uint16_t error_code);
+
+  static size_t generate_close_frame(uint16_t code, void *buffer);
+
+  enum ws_opcode_t : uint8_t {
 #define X(code, name) WS_OPCODE_##name = code,
     WS_OPCODE_MAP(X)
 #undef X
   };
 
-  size_t ParserExecute(void *buffer, size_t length) override;
-  inline bool IsDone() const override {
-    return state_ == parser_state_t::kWsParserDone;
-  }
-  void Reset() override;
-  inline int GetErrorCode() const override { return error_code_; }
-  const char *GetError() const override;
-
-  inline ws_opcode_t GetOpcode() const {
-    return static_cast<ws_opcode_t>(opcode_);
-  }
-
-  // 获取缓冲区实际能够存放的数据载荷大小
-  static size_t get_affordable_payload_size(size_t payload_length,
-                                            size_t buffer_size);
-
-  // 封装websocket数据帧
-  static size_t encapsulation_package(bool fin_flag, ws_opcode_t opcode,
-                                      void *buffer, void *payload,
-                                      size_t length);
-
-  // 获取载荷数据，当数据不使用时，及时调用free函数避免内存泄露
-  inline void *GetPayloadData(size_t *payload_length) {
-    *payload_length = payload_length_;
-    return data_;
-  }
-
-private:
   enum class parser_state_t {
     kWsParserFinAndOpcode = 0,
     kWsParserMaskAndLen,
@@ -87,7 +69,7 @@ private:
     kWsParserDone
   };
 
-  enum ws_close_code_t {
+  enum ws_close_code_t : uint16_t {
 #define X(name, code, reason) WS_CLOSE_##name = code,
     WS_CLOSE_STATUS_MAP(X)
 #undef X
@@ -106,7 +88,7 @@ private:
   uint64_t payload_length_;
   uint64_t remain_bytes_{1};
   // 存放解析后的载荷数据
-  void *data_{NULL};
+  std::string data_;
 };
 
 } // namespace jdocs

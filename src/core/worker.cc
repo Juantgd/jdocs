@@ -27,4 +27,27 @@ void *Worker::worker_main(void *arg) {
   return NULL;
 }
 
+std::shared_ptr<TcpConnection> Worker::GetConnection(uint32_t conn_id) {
+  auto it = conn_map_.find(conn_id);
+  if (it != conn_map_.end()) {
+    return it->second;
+  }
+  return nullptr;
+}
+
+void Worker::AddConnection(uint32_t conn_id,
+                           std::shared_ptr<TcpConnection> connection) {
+  bool ret = conn_map_.insert({conn_id, std::move(connection)}).second;
+  if (!ret) {
+    spdlog::error("unordered_map insert failed.");
+  }
+}
+
+void Worker::DelConnection(uint32_t conn_id) {
+  auto it = conn_map_.find(conn_id);
+  if (it != conn_map_.end()) {
+    conn_map_.erase(it);
+  }
+}
+
 } // namespace jdocs

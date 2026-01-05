@@ -69,7 +69,9 @@ add_library(corelib
     src/utils/helpers.cc
     src/database/mysql_connection.cc
     src/protocol/http/http_parser.cc
+    src/protocol/http/http_handler.cc
     src/protocol/websocket/websocket_parser.cc
+    src/protocol/websocket/websocket_handler.cc
 )
 
 # 添加mysqlclient库的搜索路径

@@ -3,9 +3,13 @@
 #ifndef JDOCS_CORE_WORKER_H_
 #define JDOCS_CORE_WORKER_H_
 
+#include <memory>
+#include <unordered_map>
+
 #include <pthread.h>
 
 #include "event_loop.h"
+#include "net/tcp_connection.h"
 
 namespace jdocs {
 
@@ -24,6 +28,13 @@ public:
     return event_loop_->GetRingInstance();
   }
 
+  std::shared_ptr<TcpConnection> GetConnection(uint32_t conn_id);
+
+  void AddConnection(uint32_t conn_id,
+                     std::shared_ptr<TcpConnection> connection);
+
+  void DelConnection(uint32_t conn_id);
+
   const std::string &GetName() const { return name_; }
 
 private:
@@ -32,6 +43,9 @@ private:
   std::string name_;
   EventLoop *event_loop_;
   JdocsServer *parent_;
+
+  // 保存着connection_id到TcpConnection类实例的映射
+  std::unordered_map<uint32_t, std::shared_ptr<TcpConnection>> conn_map_;
 };
 
 } // namespace jdocs

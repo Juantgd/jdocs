@@ -50,7 +50,7 @@ size_t WebSocketParser::ParserExecute(void *buffer, size_t length) {
     case parser_state_t::kWsParserPayloadLen16:
       ((uint8_t *)&payload_length_)[2 - remain_bytes_] = buf[i];
       if (--remain_bytes_ == 0) {
-        payload_length_ = be16toh(payload_length_);
+        payload_length_ = be16toh(payload_length_ & 0xFFFF);
         if (payload_length_ > kMaxPayloadLength) {
           error_code_ = WS_CLOSE_PAYLOAD_TOO_BIG;
           return 0;
@@ -83,10 +83,10 @@ size_t WebSocketParser::ParserExecute(void *buffer, size_t length) {
       }
       break;
     case parser_state_t::kWsParserPayloadData:
-      if (data_ == NULL)
-        data_ = malloc(payload_length_);
+      if (data_.empty())
+        data_.reserve(payload_length_);
       index = payload_length_ - remain_bytes_;
-      ((uint8_t *)(data_))[index] = buf[i] ^ mask_[index % 4];
+      data_.push_back(buf[i] ^ mask_[index % 4]);
       if (--remain_bytes_ == 0) {
         state_ = parser_state_t::kWsParserDone;
       }
@@ -101,11 +101,15 @@ size_t WebSocketParser::ParserExecute(void *buffer, size_t length) {
 void WebSocketParser::Reset() {
   state_ = parser_state_t::kWsParserFinAndOpcode;
   remain_bytes_ = 1;
-  data_ = NULL;
+  data_.clear();
 }
 
 const char *WebSocketParser::GetError() const {
-  switch (error_code_) {
+  return close_message(error_code_);
+}
+
+const char *WebSocketParser::close_message(uint16_t error_code) {
+  switch (error_code) {
 #define X(name, code, reason)                                                  \
   case code:                                                                   \
     return reason;
@@ -116,43 +120,14 @@ const char *WebSocketParser::GetError() const {
   }
 }
 
-// 封装websocket数据帧，传入的载荷数据不要超过缓冲区大小，否则会发生溢出
-size_t WebSocketParser::encapsulation_package(bool fin_flag, ws_opcode_t opcode,
-                                              void *buffer, void *payload,
-                                              size_t length) {
-  size_t frame_size = 0;
-  size_t payload_offset = 2;
+size_t WebSocketParser::generate_close_frame(uint16_t code, void *buffer) {
   uint8_t *buf = static_cast<uint8_t *>(buffer);
-  if (length < 126) {
-    frame_size = payload_offset + length;
-    buf[1] = length & 0x7F;
-  } else if (length >= 126 && length < 0xFFFF) {
-    payload_offset = 4;
-    frame_size = payload_offset + length;
-    buf[1] = 126;
-    *((uint16_t *)&buf[2]) = htobe16(length & 0xFFFF);
-  } else {
-    payload_offset = 10;
-    frame_size = payload_offset + length;
-    buf[1] = 127;
-    *((uint64_t *)&buf[2]) = htobe64(length);
-  }
-  buf[0] = static_cast<uint8_t>((fin_flag << 7) | opcode);
-  memcpy(buf + payload_offset, payload, length);
-  return frame_size;
+  const char *close_msg = close_message(code);
+  size_t len = strlen(close_msg);
+  buf[0] = 0x88;
+  buf[1] = (len + 2) & 0x7F;
+  *(uint16_t *)&buf[2] = htobe16(code);
+  memcpy(buf + 4, close_msg, len);
+  return len + 4;
 }
-
-size_t WebSocketParser::get_affordable_payload_size(size_t payload_length,
-                                                    size_t buffer_size) {
-  if (buffer_size <= 2)
-    return 0;
-  if (payload_length < 126)
-    buffer_size -= 2;
-  else if (payload_length >= 126 && payload_length < 0xFFFF)
-    buffer_size = buffer_size > 4 ? buffer_size - 4 : 0;
-  else
-    buffer_size = buffer_size > 10 ? buffer_size - 10 : 0;
-  return buffer_size > payload_length ? payload_length : buffer_size;
-}
-
 } // namespace jdocs

@@ -35,18 +35,19 @@ public:
   }
   inline int GetListeningFd() const { return serv_fd_; }
 
-  // 通过连接id获取对应的连接对象
-  std::shared_ptr<TcpConnection> GetConnection(uint32_t conn_id);
+  // 通过用户id获取对应的连接id，不存在则返回0
+  uint32_t GetConnectionId(uint32_t user_id);
   // 添加连接id到连接对象的映射
-  void AddConnection(uint32_t conn_id,
-                     std::shared_ptr<TcpConnection> connection);
+  void AddUserSession(uint32_t user_id, uint32_t conn_id);
   // 删除连接id到连接对象的映射
-  void DelConnection(uint32_t conn_id);
+  void DelUserSession(uint32_t user_id);
 
 private:
   EventLoop event_loop_;
   int serv_fd_;
-  std::unordered_map<uint32_t, std::shared_ptr<TcpConnection>> conn_map_;
+  // TODO: 每个worker线程保存connection_id到TcpConnection实例的映射
+  // 而server主线程保存user_id到connection_id的映射
+  std::unordered_map<uint32_t, uint32_t> user_map_;
 
   std::vector<Worker> worker_threads_;
   unsigned int nr_threads_;

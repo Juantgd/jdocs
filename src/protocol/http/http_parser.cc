@@ -453,20 +453,4 @@ void HttpParser::Reset() {
   host_length_ = 0;
 }
 
-size_t HttpParser::generate_response_101(void *buffer, const char *key) {
-  memcpy(buffer, kHttpResponse101, sizeof(kHttpResponse101) - 1);
-  generate_accept_key(key, (char *)buffer + sizeof(kHttpResponse101) - 1);
-  ((char *)buffer)[sizeof(kHttpResponse101) + 27] = '\r';
-  ((char *)buffer)[sizeof(kHttpResponse101) + 28] = '\n';
-  ((char *)buffer)[sizeof(kHttpResponse101) + 29] = '\r';
-  ((char *)buffer)[sizeof(kHttpResponse101) + 30] = '\n';
-  ((char *)buffer)[sizeof(kHttpResponse101) + 31] = 0;
-  return sizeof(kHttpResponse101) + 31;
-}
-
-size_t HttpParser::generate_response_400(void *buffer) {
-  memcpy(buffer, kHttpResponse400, sizeof(kHttpResponse400) - 1);
-  return sizeof(kHttpResponse400) - 1;
-}
-
 } // namespace jdocs

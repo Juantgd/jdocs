@@ -37,21 +37,20 @@ int JdocsServer::Run() {
   return event_loop_.Run();
 }
 
-std::shared_ptr<TcpConnection> JdocsServer::GetConnection(uint32_t conn_id) {
+uint32_t JdocsServer::GetConnectionId(uint32_t user_id) {
   std::shared_lock<std::shared_mutex> lock_(mutex_);
-  auto it = conn_map_.find(conn_id);
-  if (it != conn_map_.end()) {
+  auto it = user_map_.find(user_id);
+  if (it != user_map_.end()) {
     return it->second;
   }
-  return nullptr;
+  return 0;
 }
 
-void JdocsServer::AddConnection(uint32_t conn_id,
-                                std::shared_ptr<TcpConnection> connection) {
+void JdocsServer::AddUserSession(uint32_t user_id, uint32_t conn_id) {
   bool ret;
   {
     std::unique_lock<std::shared_mutex> lock_(mutex_);
-    ret = conn_map_.insert({conn_id, std::move(connection)}).second;
+    ret = user_map_.insert({user_id, conn_id}).second;
   }
   if (!ret) {
     spdlog::error("unordered_map insert failed.");
@@ -59,11 +58,11 @@ void JdocsServer::AddConnection(uint32_t conn_id,
   }
 }
 
-void JdocsServer::DelConnection(uint32_t conn_id) {
+void JdocsServer::DelUserSession(uint32_t user_id) {
   std::unique_lock<std::shared_mutex> lock_(mutex_);
-  auto it = conn_map_.find(conn_id);
-  if (it != conn_map_.end()) {
-    conn_map_.erase(it);
+  auto it = user_map_.find(user_id);
+  if (it != user_map_.end()) {
+    user_map_.erase(it);
   }
 }
 
