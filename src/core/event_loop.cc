@@ -8,7 +8,7 @@
 #include <liburing.h>
 #include <spdlog/spdlog.h>
 
-#include "context.h"
+#include "protocol/websocket/websocket_handler.h"
 #include "server.h"
 
 namespace jdocs {
@@ -16,14 +16,10 @@ namespace jdocs {
 EventLoop::EventLoop(JdocsServer *server, Worker *worker, bool flag)
     : server_(server), worker_(worker), flag_(flag) {
   SetUpIoUring(kQueueDepth);
-  buffer_pool_ = new BufferPool(&ring_);
+  buffer_pool_ = std::make_unique<BufferPool>(&ring_);
 }
 
-EventLoop::~EventLoop() {
-  if (buffer_pool_)
-    delete buffer_pool_;
-  DestroyIoUring();
-}
+EventLoop::~EventLoop() { DestroyIoUring(); }
 
 int EventLoop::Run() {
   running_ = true;
@@ -79,8 +75,8 @@ int EventLoop::EventHandler(struct io_uring_cqe *cqe) {
   case __FD_PASS:
     ret = handle_fd_pass(cqe);
     break;
-  case __CROSS_MSG:
-    ret = handle_cross_msg(cqe);
+  case __CROSS_THREAD_MSG:
+    ret = handle_cross_thread_msg(cqe);
     break;
   case __TIMEOUT:
     ret = handle_timeout(cqe);
@@ -189,14 +185,13 @@ int EventLoop::__prep_close(int fd, uint32_t conn_id) {
 }
 
 // 准备向其他事件循环中的io_uring实例提交sqe，实现跨线程通讯
-// TODO: 需要对传递的缓冲区进行更好地管理
-int EventLoop::__prep_cross_msg(uint32_t conn_id, int fd, uint16_t bid,
-                                unsigned int length) {
+int EventLoop::__prep_cross_thread_msg(uint32_t conn_id, CTContext *context) {
   struct io_uring_sqe *sqe = GetSqe();
-  uint64_t user_data = context_encode(__CROSS_MSG, conn_id, fd, bid);
+  uint64_t user_data = ctcontext_encode(conn_id, ctcontext_low_addr(context));
   int ring_fd = server_->ConnectionIdToRingFd(conn_id);
-  io_uring_prep_msg_ring(sqe, ring_fd, length, user_data, 0);
-  user_data_encode(sqe, __NOP, conn_id, fd, bid);
+  io_uring_prep_msg_ring(sqe, ring_fd, ctcontext_high_addr(context), user_data,
+                         0);
+  user_data_encode(sqe, __NOP, conn_id, 0, 0);
   return 0;
 }
 
@@ -390,7 +385,34 @@ int EventLoop::handle_cancel(struct io_uring_cqe *cqe) {
 }
 
 // 处理跨线程消息
-int EventLoop::handle_cross_msg(struct io_uring_cqe *cqe) { return 0; }
+int EventLoop::handle_cross_thread_msg(struct io_uring_cqe *cqe) {
+  // 通过获取cqe->res中存放的高32位地址和user_data中低32位地址
+  // 得到实际的跨线程上下文对象地址
+  uint32_t low_addr = cqe_to_addr(cqe);
+  uint32_t high_addr = static_cast<uint32_t>(cqe->res);
+  CTContext *context = get_ctcontext(high_addr, low_addr);
+  if (!context) {
+    spdlog::error("[{}] got a null cross thread message", worker_->GetName());
+    release_context(context);
+    return 0;
+  }
+  spdlog::info("[{}] got a cross thread message, sender: {}",
+               worker_->GetName(), context->snd_conn_id);
+  std::shared_ptr<TcpConnection> connection =
+      worker_->GetConnection(cqe_to_conn_id(cqe));
+  if (!connection || connection->closed()) {
+    spdlog::info("[{}] conn_id: {} not online", worker_->GetName(),
+                 cqe_to_conn_id(cqe));
+    release_context(context);
+    return 0;
+  }
+  if (connection->GetConnStage() == TcpConnection::kConnStageWebsocket) {
+    WebSocketHandler::send_data_frame(connection.get(), context->message.data(),
+                                      context->message.size());
+  }
+  release_context(context);
+  return 0;
+}
 
 // 定时器事件处理函数，处理当前超时的事件
 int EventLoop::handle_timeout(struct io_uring_cqe *cqe) {
@@ -399,7 +421,7 @@ int EventLoop::handle_timeout(struct io_uring_cqe *cqe) {
                   strerror(-cqe->res));
     return -1;
   }
-  // 开始处理超时事件，如连接超时则进行关闭操作
+  // TODO: 开始处理超时事件，如连接超时则进行关闭操作
   return 0;
 }
 

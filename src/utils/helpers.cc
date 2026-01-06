@@ -41,4 +41,13 @@ int create_listening_socket(int port) {
   return listen_fd;
 }
 
+void timespec_add_millis(timespec *ts, uint64_t millis) {
+  ts->tv_sec += millis / 1000;
+  ts->tv_nsec += (millis % 1000) * 1000000;
+  if (ts->tv_nsec >= 1000000000) {
+    ts->tv_sec++;
+    ts->tv_nsec -= 1000000000;
+  }
+}
+
 } // namespace jdocs

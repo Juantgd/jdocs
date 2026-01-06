@@ -50,7 +50,10 @@ public:
 
   void transition_stage(conn_stage_t stage);
 
+  inline conn_stage_t GetConnStage() const { return stage_; }
+
 private:
+  conn_stage_t stage_{kConnStageHttp};
   // 直接文件描述符
   int fd_;
   bool closed_;

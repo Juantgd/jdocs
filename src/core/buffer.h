@@ -64,8 +64,6 @@ private:
   struct io_uring_buf_ring *buf_ring_;
   std::vector<void *> recv_pool_;
   std::vector<void *> send_pool_;
-  // TODO: 使用bitmap优化可用缓冲区索引
-  // std::stack<int> avaliable_buf_index_;
   BitMap avaliable_buf_index_;
 };
 

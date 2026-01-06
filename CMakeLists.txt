@@ -116,5 +116,13 @@ target_link_libraries(bitmap_test
     GTest::gtest_main
 )
 
+add_executable(timer_test tests/timer_test.cc)
+target_link_libraries(timer_test
+  PRIVATE
+    corelib
+    GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(bitmap_test)
+gtest_discover_tests(timer_test)

@@ -7,7 +7,6 @@
 #include <unordered_map>
 
 #include "event_loop.h"
-#include "net/tcp_connection.h"
 #include "worker.h"
 
 namespace jdocs {
@@ -19,8 +18,6 @@ public:
 
   JdocsServer(const JdocsServer &) = delete;
   JdocsServer &operator=(const JdocsServer &) = delete;
-  JdocsServer(JdocsServer &&) = default;
-  JdocsServer &operator=(JdocsServer &&) = default;
 
   int Run();
 
@@ -45,7 +42,7 @@ public:
 private:
   EventLoop event_loop_;
   int serv_fd_;
-  // TODO: 每个worker线程保存connection_id到TcpConnection实例的映射
+  // 每个worker线程保存connection_id到TcpConnection实例的映射
   // 而server主线程保存user_id到connection_id的映射
   std::unordered_map<uint32_t, uint32_t> user_map_;
 

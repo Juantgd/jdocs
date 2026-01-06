@@ -16,6 +16,9 @@ public:
   void RecvDataHandle(TcpConnection *connection, void *buffer,
                       size_t length) override;
 
+  static void send_data_frame(TcpConnection *connection, void *data,
+                              size_t length);
+
 private:
   // websocket协议处理状态机
   enum class ws_handle_state_t : uint8_t {
@@ -29,16 +32,6 @@ private:
 
   void control_frame_handle(TcpConnection *connection);
 
-  void send_close_frame(TcpConnection *connection, uint16_t code,
-                        bool flag = false);
-
-  // TODO: 有待实现
-  // void send_ping_frame();
-
-  void send_pong_frame(TcpConnection *connection, void *payload, size_t length);
-
-  void send_data_frame(TcpConnection *connection, void *data, size_t length);
-
   // 获取缓冲区实际能够存放的数据载荷大小
   static size_t get_affordable_payload_size(size_t payload_length,
                                             size_t buffer_size);
@@ -48,6 +41,14 @@ private:
                                       WebSocketParser::ws_opcode_t opcode,
                                       void *buffer, void *payload,
                                       size_t length);
+
+  void send_close_frame(TcpConnection *connection, uint16_t code,
+                        bool flag = false);
+
+  void send_pong_frame(TcpConnection *connection, void *payload, size_t length);
+
+  // TODO: 有待实现
+  // void send_ping_frame();
 
   bool wait_pong_flag;
   ws_handle_state_t handle_state_{0};

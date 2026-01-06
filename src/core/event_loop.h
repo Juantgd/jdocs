@@ -6,6 +6,7 @@
 #include <liburing.h>
 
 #include "buffer.h"
+#include "context.h"
 
 namespace jdocs {
 
@@ -16,7 +17,7 @@ constexpr static uint32_t kQueueDepth = 2048;
 // io_uring实例注册的文件描述符表大小
 constexpr static uint32_t kFdTableSize = 2048;
 // io_uring轮询线程闲置超时时间，ms为单位
-constexpr static uint32_t kThreadIdleTime = 2000;
+// constexpr static uint32_t kThreadIdleTime = 2000;
 } // namespace
 
 class Worker;
@@ -49,8 +50,8 @@ public:
 
   int __prep_close(int fd, uint32_t conn_id);
 
-  int __prep_cross_msg(uint32_t conn_id, int fd, uint16_t bid,
-                       unsigned int length);
+  // 准备一个跨线程消息，其中conn_id为目标线程的连接id
+  int __prep_cross_thread_msg(uint32_t conn_id, CTContext *context);
 
   int __submit_cancel(int fd, uint32_t conn_id);
 
@@ -74,11 +75,11 @@ private:
   int handle_shutdown(struct io_uring_cqe *cqe);
   int handle_close(struct io_uring_cqe *cqe);
   int handle_fd_pass(struct io_uring_cqe *cqe);
-  int handle_cross_msg(struct io_uring_cqe *cqe);
+  int handle_cross_thread_msg(struct io_uring_cqe *cqe);
   int handle_timeout(struct io_uring_cqe *cqe);
 
   // 缓冲池，用于管理接受/发送数据缓冲区
-  BufferPool *buffer_pool_;
+  std::unique_ptr<BufferPool> buffer_pool_;
 
   JdocsServer *server_;
   Worker *worker_;
