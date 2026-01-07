@@ -9,10 +9,10 @@ namespace jdocs {
 
 TcpConnection::TcpConnection(EventLoop *event_loop, int fd, uint32_t conn_id)
     : fd_(fd), conn_id_(conn_id),
-      protocol_handler_(std::make_unique<HttpHandler>()),
+      protocol_handler_(std::make_unique<HttpHandler>(this)),
       event_loop_(event_loop) {}
 
-void TcpConnection::SendHandle(void *buffer, size_t length) {
+void TcpConnection::SendHandle(size_t length) {
   if (closed_)
     return;
   // 检查所有数据是否已经发送完毕，否则继续提交发送请求
@@ -24,7 +24,7 @@ void TcpConnection::RecvHandle(void *buffer, size_t length) {
   if (closed_)
     return;
   recv_bytes_ += length;
-  protocol_handler_->RecvDataHandle(this, buffer, length);
+  protocol_handler_->RecvDataHandle(buffer, length);
 }
 
 void TcpConnection::CrossThreadHandle(void *data, size_t length) {}
@@ -32,11 +32,11 @@ void TcpConnection::CrossThreadHandle(void *data, size_t length) {}
 void TcpConnection::transition_stage(conn_stage_t stage) {
   switch (stage) {
   case kConnStageHttp: {
-    protocol_handler_.reset(new HttpHandler());
+    protocol_handler_.reset(new HttpHandler(this));
     break;
   }
   case kConnStageWebsocket: {
-    protocol_handler_.reset(new WebSocketHandler());
+    protocol_handler_.reset(new WebSocketHandler(this));
     break;
   }
   }

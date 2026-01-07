@@ -62,7 +62,7 @@ struct CTContext {
 };
 
 static inline void release_context(CTContext *context) {
-  // 当前引用技术为0，进行释放操作
+  // 当前引用计数为0，进行释放操作
   if (context->ref_count.fetch_sub(1, std::memory_order_acq_rel) == 1)
     delete context;
 }

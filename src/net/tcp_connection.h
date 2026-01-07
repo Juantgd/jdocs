@@ -35,7 +35,7 @@ public:
   inline uint64_t send_bytes() const { return send_bytes_; }
 
   // 写操作完成处理函数，传入已写入的缓冲区地址和字节数
-  virtual void SendHandle(void *buffer, size_t length);
+  virtual void SendHandle(size_t length);
 
   // 读操作完成处理函数，传入已读取的缓冲区地址和读取的字节数
   virtual void RecvHandle(void *buffer, size_t length);
@@ -44,7 +44,11 @@ public:
   virtual void CrossThreadHandle(void *data, size_t length);
 
   // 关闭操作
-  void close() { closed_ = !event_loop_->submit_cancel(fd_, conn_id_); }
+  void close() {
+    if (closed_)
+      return;
+    closed_ = !event_loop_->submit_cancel(fd_, conn_id_);
+  }
 
   inline EventLoop *GetEventLoop() { return event_loop_; }
 
@@ -68,7 +72,8 @@ private:
   uint32_t user_id_{0};
 
   // 管理闲置连接的定时器
-  TimeWheel::timer_node idle_timer_{[this]() { this->close(); }};
+  TimeWheel::timer_node idle_timer_{
+      [this]() { this->protocol_handler_->TimeoutHandle(); }};
 
   // 应用层协议处理类
   std::unique_ptr<ProtocolHandler> protocol_handler_;

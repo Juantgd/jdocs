@@ -23,11 +23,12 @@ namespace {
 
 class HttpHandler : public ProtocolHandler {
 public:
-  HttpHandler();
+  HttpHandler(TcpConnection *connection);
   ~HttpHandler() = default;
 
-  void RecvDataHandle(TcpConnection *connection, void *buffer,
-                      size_t length) override;
+  void RecvDataHandle(void *buffer, size_t length) override;
+
+  void TimeoutHandle() override;
 
 private:
   // 用于生成sec-websocket-accept的值

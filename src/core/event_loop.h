@@ -47,8 +47,8 @@ public:
 
   int prep_recv(int fd, uint32_t conn_id);
 
-  // int __prep_send(int fd, uint32_t conn_id, void *data, uint16_t bid,
-  //                 size_t length);
+  // 无需获取固定缓冲区，用于发送较小的数据包
+  int prep_send(int fd, uint32_t conn_id, void *data, size_t length);
 
   int prep_send_zc(int fd, uint32_t conn_id, void *data, uint16_t bidx,
                    size_t length, bool flag = false);

@@ -9,7 +9,8 @@ namespace jdocs {
 
 namespace {
 constexpr static uint32_t kBitMapUnitSize = sizeof(uint64_t) * 8;
-}
+constexpr static uint32_t kBitMapUnitMask = kBitMapUnitSize - 1;
+} // namespace
 
 class BitMap final {
 public:

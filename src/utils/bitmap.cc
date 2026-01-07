@@ -44,7 +44,7 @@ bool BitMap::SetIndex(uint32_t index) {
   if (index >= bit_count_)
     return false;
   uint32_t block = index / kBitMapUnitSize;
-  uint64_t bit_mask = (1ULL << (index % kBitMapUnitSize));
+  uint64_t bit_mask = (1ULL << (index & kBitMapUnitMask));
   if (bitmap_[block] & bit_mask)
     return false;
   bitmap_[block] |= bit_mask;
@@ -60,10 +60,10 @@ void BitMap::SetIndexRange(uint32_t begin_index, uint32_t count) {
   uint32_t end_index = begin_index + count;
   uint32_t end_block = (end_index - 1) / kBitMapUnitSize;
   uint32_t begin_block = begin_index / kBitMapUnitSize;
-  uint64_t bitmask = ~((1ULL << (begin_index % kBitMapUnitSize)) - 1);
+  uint64_t bitmask = ~((1ULL << (begin_index & kBitMapUnitMask)) - 1);
 
   if (begin_block == end_block) {
-    uint64_t mask = ((1ULL << (end_index % kBitMapUnitSize)) - 1);
+    uint64_t mask = ((1ULL << (end_index & kBitMapUnitMask)) - 1);
     if (mask == 0)
       mask = ~0ULL;
     bitmask &= mask;
@@ -84,7 +84,7 @@ void BitMap::SetIndexRange(uint32_t begin_index, uint32_t count) {
   }
 
   if (begin_block != end_block) {
-    bitmask = ((1ULL << (end_index % kBitMapUnitSize)) - 1);
+    bitmask = ((1ULL << (end_index & kBitMapUnitMask)) - 1);
     if (bitmask == 0)
       bitmask = ~0ULL;
     block = bitmap_[end_block] & bitmask;
@@ -101,7 +101,7 @@ bool BitMap::RemoveIndex(uint32_t index) {
   if (index >= bit_count_)
     return false;
   uint32_t block = index / kBitMapUnitSize;
-  uint64_t bit_mask = (1ULL << (index % kBitMapUnitSize));
+  uint64_t bit_mask = (1ULL << (index & kBitMapUnitMask));
   if (bitmap_[block] & bit_mask) {
     bitmap_[block] &= ~bit_mask;
     --bit_used_count_;
@@ -118,10 +118,10 @@ void BitMap::RemoveIndexRange(uint32_t begin_index, uint32_t count) {
   uint32_t end_index = begin_index + count;
   uint32_t end_block = (end_index - 1) / kBitMapUnitSize;
   uint32_t begin_block = begin_index / kBitMapUnitSize;
-  uint64_t bitmask = ~((1ULL << (begin_index % kBitMapUnitSize)) - 1);
+  uint64_t bitmask = ~((1ULL << (begin_index & kBitMapUnitMask)) - 1);
 
   if (begin_block == end_block) {
-    uint64_t mask = ((1ULL << (end_index % kBitMapUnitSize)) - 1);
+    uint64_t mask = ((1ULL << (end_index & kBitMapUnitMask)) - 1);
     if (mask == 0)
       mask = ~0ULL;
     bitmask &= mask;
@@ -142,7 +142,7 @@ void BitMap::RemoveIndexRange(uint32_t begin_index, uint32_t count) {
   }
 
   if (begin_block != end_block) {
-    bitmask = ((1ULL << (end_index % kBitMapUnitSize)) - 1);
+    bitmask = ((1ULL << (end_index & kBitMapUnitMask)) - 1);
     if (bitmask == 0)
       bitmask = ~0ULL;
     block = bitmap_[end_block] & bitmask;

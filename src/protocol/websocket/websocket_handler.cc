@@ -1,35 +1,43 @@
 // Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "websocket_handler.h"
-#include "net/tcp_connection.h"
-#include "protocol/websocket/websocket_parser.h"
 
 #include <string.h>
 
 namespace jdocs {
 
-WebSocketHandler::WebSocketHandler() { parser.Reset(); }
+WebSocketHandler::WebSocketHandler(TcpConnection *connection)
+    : ProtocolHandler(connection) {
+  parser.Reset();
+}
 
-void WebSocketHandler::RecvDataHandle(TcpConnection *connection, void *buffer,
-                                      size_t length) {
+// 超时处理策略，发送ping帧，默认30秒内未收到pong帧则关闭连接
+void WebSocketHandler::TimeoutHandle() {
+  send_ping_frame();
+  connection_->GetEventLoop()->AddTimer(&wait_pong_timer_,
+                                        kTimeToCloseAfterPing);
+}
+
+void WebSocketHandler::RecvDataHandle(void *buffer, size_t length) {
 next_loop:
   spdlog::info("websocket: parsing ...");
-  if (connection->closed())
+  if (connection_->closed())
     return;
   size_t parsed_bytes = parser.ParserExecute(buffer, length);
   if (parser.IsDone()) {
     // 控制帧处理
     if (parser.opcode_ & 0x08) {
-      control_frame_handle(connection);
+      control_frame_handle();
     } else {
       // 非控制帧处理
-      frame_handle(connection);
+      frame_handle();
       // 此处进行业务处理，所有数据已解析完毕
       if (handle_state_ == ws_handle_state_t::kWsHandleStateNormal) {
         // service_handle(payload_cache);
         // websocket echo server test.
         spdlog::info("service handle working...");
-        send_data_frame(connection, payload_cache.data(), payload_cache.size());
+        send_data_frame(connection_, payload_cache.data(),
+                        payload_cache.size());
         payload_cache.clear();
       }
     }
@@ -43,8 +51,7 @@ next_loop:
   } else {
     // 解析出现错误
     if (parser.GetErrorCode()) {
-      send_close_frame(connection,
-                       static_cast<uint16_t>(parser.GetErrorCode()));
+      send_close_frame(static_cast<uint16_t>(parser.GetErrorCode()));
     }
     // 需要更多数据进行解析
   }
@@ -60,7 +67,7 @@ size_t WebSocketHandler::encapsulation_package(
   if (length < 126) {
     frame_size = payload_offset + length;
     buf[1] = length & 0x7F;
-  } else if (length >= 126 && length < 0xFFFF) {
+  } else if (length < 0xFFFF) {
     payload_offset = 4;
     frame_size = payload_offset + length;
     buf[1] = 126;
@@ -82,14 +89,14 @@ size_t WebSocketHandler::get_affordable_payload_size(size_t payload_length,
     return 0;
   if (payload_length < 126)
     buffer_size -= 2;
-  else if (payload_length >= 126 && payload_length < 0xFFFF)
+  else if (payload_length < 0xFFFF)
     buffer_size = buffer_size > 4 ? buffer_size - 4 : 0;
   else
     buffer_size = buffer_size > 10 ? buffer_size - 10 : 0;
   return buffer_size > payload_length ? payload_length : buffer_size;
 }
 
-void WebSocketHandler::frame_handle(TcpConnection *connection) {
+void WebSocketHandler::frame_handle() {
   if (handle_state_ == ws_handle_state_t::kWsHandleStateClosing)
     return;
   switch (parser.opcode_) {
@@ -98,12 +105,12 @@ void WebSocketHandler::frame_handle(TcpConnection *connection) {
       if (parser.fin_flag_)
         handle_state_ = ws_handle_state_t::kWsHandleStateNormal;
       if (payload_cache.size() + parser.data_.size() > kMaxPayloadLength) {
-        send_close_frame(connection, WebSocketParser::WS_CLOSE_PAYLOAD_TOO_BIG);
+        send_close_frame(WebSocketParser::WS_CLOSE_PAYLOAD_TOO_BIG);
       } else {
         payload_cache.append(parser.data_);
       }
     } else {
-      send_close_frame(connection, WebSocketParser::WS_CLOSE_PROTOCOL_ERROR);
+      send_close_frame(WebSocketParser::WS_CLOSE_PROTOCOL_ERROR);
     }
     break;
   }
@@ -117,72 +124,85 @@ void WebSocketHandler::frame_handle(TcpConnection *connection) {
   }
   default: {
     // 收到暂不支持的操作码
-    send_close_frame(connection, WebSocketParser::WS_CLOSE_UNSUPPORTED_DATA);
+    send_close_frame(WebSocketParser::WS_CLOSE_UNSUPPORTED_DATA);
   }
   }
 }
 
-void WebSocketHandler::control_frame_handle(TcpConnection *connection) {
+void WebSocketHandler::control_frame_handle() {
   switch (parser.opcode_) {
   case WebSocketParser::WS_OPCODE_CLOSE: {
     // 客户端发起了close请求
     if (handle_state_ != ws_handle_state_t::kWsHandleStateClosing) {
-      send_close_frame(connection, WebSocketParser::WS_CLOSE_NORMAL, true);
+      send_close_frame(WebSocketParser::WS_CLOSE_NORMAL, true);
     }
-    connection->close();
+    connection_->close();
     break;
   }
   case WebSocketParser::WS_OPCODE_PING: {
     spdlog::info("websocket: got a PING frame.");
-    send_pong_frame(connection, parser.data_.data(), parser.data_.size());
+    send_pong_frame(parser.data_.data(), parser.data_.size());
     break;
   }
   case WebSocketParser::WS_OPCODE_PONG: {
-    // TODO: 如果先前发送了ping包，则处理，比如取消超时关闭连接事件
+    // 如果先前发送了ping包，则处理，比如取消超时关闭连接事件，否则忽略
+    spdlog::info("websocket: got a PONG frame.");
     if (wait_pong_flag) {
+      // 客户端发送的pong帧载荷与预期载荷不一致，关闭连接
+      if (std::strcmp(parser.data_.c_str(), WS_PING_PAYLOAD) != 0) {
+        send_close_frame(WebSocketParser::WS_CLOSE_PROTOCOL_ERROR);
+      }
+      TimeWheel::timer_cancel(&wait_pong_timer_);
       wait_pong_flag = false;
     }
     break;
   }
   default: {
     // 收到暂不支持的操作码
-    send_close_frame(connection, WebSocketParser::WS_CLOSE_UNSUPPORTED_DATA);
+    send_close_frame(WebSocketParser::WS_CLOSE_UNSUPPORTED_DATA);
   }
   }
 }
 
-void WebSocketHandler::send_close_frame(TcpConnection *connection,
-                                        uint16_t code, bool flag) {
+void WebSocketHandler::send_close_frame(uint16_t code, bool flag) {
   void *send_buf;
-  int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
+  int bidx = connection_->GetEventLoop()->get_send_buffer(&send_buf);
   if (bidx == -1) {
     // 没有可用的发送缓冲区，说明服务器目前负载压力过大，直接关闭该连接
-    connection->close();
+    connection_->close();
     return;
   }
   spdlog::info("websocket: send close frame. message: {}",
                WebSocketParser::close_message(code));
   size_t prep_send_bytes =
       WebSocketParser::generate_close_frame(code, send_buf);
-  connection->GetEventLoop()->prep_send_zc(
-      connection->fd(), connection->conn_id(), send_buf,
+  connection_->GetEventLoop()->prep_send_zc(
+      connection_->fd(), connection_->conn_id(), send_buf,
       static_cast<uint16_t>(bidx), prep_send_bytes, flag);
   handle_state_ = ws_handle_state_t::kWsHandleStateClosing;
 }
 
-void WebSocketHandler::send_pong_frame(TcpConnection *connection, void *payload,
-                                       size_t length) {
+void WebSocketHandler::send_ping_frame() {
+  spdlog::info("websocket: send PING frame.");
+  connection_->GetEventLoop()->prep_send(
+      connection_->fd(), connection_->conn_id(), (void *)raw_ping_frame,
+      raw_ping_frame_size);
+  wait_pong_flag = true;
+}
+
+void WebSocketHandler::send_pong_frame(void *payload, size_t length) {
   void *send_buf;
-  int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
+  int bidx = connection_->GetEventLoop()->get_send_buffer(&send_buf);
   if (bidx == -1) {
-    connection->close();
+    connection_->close();
     return;
   }
+  spdlog::info("websocket: send PING frame.");
   size_t prep_send_bytes = encapsulation_package(
       true, WebSocketParser::WS_OPCODE_PONG, send_buf, payload, length);
-  connection->GetEventLoop()->prep_send_zc(connection->fd(),
-                                           connection->conn_id(), send_buf,
-                                           (uint16_t)bidx, prep_send_bytes);
+  connection_->GetEventLoop()->prep_send_zc(connection_->fd(),
+                                            connection_->conn_id(), send_buf,
+                                            (uint16_t)bidx, prep_send_bytes);
 }
 
 void WebSocketHandler::send_data_frame(TcpConnection *connection, void *data,

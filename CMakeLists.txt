@@ -57,6 +57,8 @@ find_package(PkgConfig REQUIRED)
 
 pkg_check_modules(MYSQLCLIENT REQUIRED mysqlclient)
 
+find_package(OpenSSL REQUIRED)
+
 add_library(corelib
   STATIC
     src/core/event_loop.cc
@@ -88,8 +90,8 @@ target_link_libraries(corelib
     pthread         # 提供多线程支持
     uring           # 提供io异步接口
     mysqlclient     # 提供mysql数据库开发接口
-    ssl
-    crypto
+    OpenSSL::SSL
+    OpenSSL::Crypto
 )
 
 # 添加include目录

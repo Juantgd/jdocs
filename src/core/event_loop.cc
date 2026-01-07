@@ -69,9 +69,9 @@ int EventLoop::EventHandler(struct io_uring_cqe *cqe) {
   case __RECV:
     ret = handle_recv(cqe);
     break;
-  // case __SEND:
-  //   ret = handle_send(cqe);
-  //   break;
+  case __SEND:
+    ret = handle_send(cqe);
+    break;
   case __SEND_ZC:
     ret = handle_send_zc(cqe);
     break;
@@ -160,16 +160,14 @@ int EventLoop::prep_recv(int fd, uint32_t conn_id) {
   return 0;
 }
 
-// 准备向客户端fd发送数据
-// int EventLoop::__prep_send(int fd, uint32_t conn_id, void *data, uint16_t
-// bid,
-//                            size_t length) {
-//   struct io_uring_sqe *sqe = GetSqe();
-//   io_uring_prep_send(sqe, fd, data, length, MSG_WAITALL | MSG_NOSIGNAL);
-//   sqe->flags |= IOSQE_FIXED_FILE;
-//   user_data_encode(sqe, __SEND, conn_id, fd, bid);
-//   return 0;
-// }
+// 无需获取固定缓冲区，用于发送较小的数据包
+int EventLoop::prep_send(int fd, uint32_t conn_id, void *data, size_t length) {
+  struct io_uring_sqe *sqe = GetSqe();
+  io_uring_prep_send(sqe, fd, data, length, MSG_WAITALL | MSG_NOSIGNAL);
+  sqe->flags |= IOSQE_FIXED_FILE;
+  user_data_encode(sqe, __SEND, conn_id, fd, 0);
+  return 0;
+}
 
 // 零拷贝发送操作
 int EventLoop::prep_send_zc(int fd, uint32_t conn_id, void *data, uint16_t bidx,
@@ -292,8 +290,6 @@ int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
     connection->close();
     return 0;
   }
-  // 更新连接超时定时器
-  AddTimer(connection->GetTimer(), kConnIdleTimeout);
   uint16_t bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
   void *recv_buf = buffer_pool_->GetRecvBuffer(bid);
   if (!recv_buf) {
@@ -302,48 +298,42 @@ int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
   }
   spdlog::info("[{}] receive {} bytes from fd: {}, bid: {}", worker_->GetName(),
                cqe->res, fd, bid);
-
   // 对该连接对象进行业务处理
   if (!connection->closed()) {
     spdlog::info("[{}] call receive handle.", worker_->GetName());
     connection->RecvHandle(recv_buf, static_cast<size_t>(cqe->res));
+    // 更新连接超时定时器
+    AddTimer(connection->GetTimer(), kConnIdleTimeout);
+    if (!(cqe->flags & IORING_CQE_F_MORE)) {
+      prep_recv(fd, cqe_to_conn_id(cqe));
+    }
   }
-
   // 处理完毕后需要将接收缓冲区放回缓存池中
   buffer_pool_->ReplenishRecvBuffer(recv_buf, bid);
-
-  if (!(cqe->flags & IORING_CQE_F_MORE)) {
-    prep_recv(fd, cqe_to_conn_id(cqe));
-  }
-
   return 0;
 }
 
-// 复用接收缓冲区，发送操作完成后需要进行补充接收缓冲区
 int EventLoop::handle_send(struct io_uring_cqe *cqe) {
   if (cqe->res < 0) {
+    if (cqe->res == -ECANCELED)
+      return 0;
     spdlog::error("send operation failed. error: {}", strerror(-cqe->res));
     return -1;
   }
   int fd = cqe_to_fd(cqe);
-  uint16_t bid = cqe_to_bid(cqe);
-  void *buffer_addr = buffer_pool_->GetRecvBuffer(bid);
-  if (buffer_addr == NULL) {
-    spdlog::error("[{}] invalid buffer, bid: {}", worker_->GetName(), bid);
-    return -1;
-  }
   std::shared_ptr<TcpConnection> connection =
       worker_->GetConnection(cqe_to_conn_id(cqe));
   if (!connection->closed())
-    connection->SendHandle(buffer_addr, static_cast<size_t>(cqe->res));
+    connection->SendHandle(static_cast<size_t>(cqe->res));
   spdlog::info("[{}] send {} bytes to fd: {}", worker_->GetName(), cqe->res,
                fd);
-  buffer_pool_->ReplenishRecvBuffer(buffer_pool_->GetRecvBuffer(bid), bid);
   return 0;
 }
 
 int EventLoop::handle_send_zc(struct io_uring_cqe *cqe) {
   if (cqe->res < 0 && !(cqe->flags & IORING_CQE_F_NOTIF)) {
+    if (cqe->res == -ECANCELED)
+      return 0;
     spdlog::error("send zero copy operation failed. error: {}",
                   strerror(-cqe->res));
     return -1;
@@ -365,7 +355,7 @@ int EventLoop::handle_send_zc(struct io_uring_cqe *cqe) {
       return -1;
     }
     if (!connection->closed())
-      connection->SendHandle(buffer_addr, static_cast<size_t>(cqe->res));
+      connection->SendHandle(static_cast<size_t>(cqe->res));
     spdlog::info("[{}] send {} bytes to fd: {}", worker_->GetName(), cqe->res,
                  fd);
   }

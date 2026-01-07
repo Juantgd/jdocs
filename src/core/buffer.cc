@@ -52,7 +52,7 @@ void *BufferPool::GetRecvBuffer(uint16_t bid) {
   if (index > recv_pool_.size())
     return nullptr;
   return static_cast<char *>(recv_pool_[index]) +
-         (kBufferSize * (bid % kBufferCount));
+         (kBufferSize * (bid & (kBufferCount - 1)));
 }
 
 // 将缓冲区返回缓冲池中，使内核有新的可用缓冲区
@@ -131,7 +131,7 @@ void *BufferPool::GetSendBuffer(uint16_t bidx) {
   if (index >= send_pool_.size())
     return NULL;
   return static_cast<char *>(send_pool_[index]) +
-         (kBufferSize * (bidx % kBufferCount));
+         (kBufferSize * (bidx & (kBufferCount - 1)));
 }
 
 void BufferPool::ReplenishSendBuffer(uint16_t bidx) {
