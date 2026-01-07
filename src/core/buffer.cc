@@ -125,7 +125,7 @@ int BufferPool::GetSendBufferIndex() {
 }
 
 void *BufferPool::GetSendBuffer(uint16_t bidx) {
-  if (bidx < 0 || bidx >= kBufferEntriesMax)
+  if (bidx >= kBufferEntriesMax)
     return NULL;
   uint32_t index = bidx / kBufferCount;
   if (index >= send_pool_.size())
@@ -135,7 +135,7 @@ void *BufferPool::GetSendBuffer(uint16_t bidx) {
 }
 
 void BufferPool::ReplenishSendBuffer(uint16_t bidx) {
-  if (bidx < 0 || bidx >= kBufferEntriesMax)
+  if (bidx >= kBufferEntriesMax)
     return;
   // avaliable_buf_index_.push(bidx);
   if (!avaliable_buf_index_.RemoveIndex(bidx))

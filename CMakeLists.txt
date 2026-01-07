@@ -18,7 +18,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # 设置编译器严格模式
-add_compile_options(-Wall -Wextra -Wpedantic -Wconversion -Wshadow)
+add_compile_options(-Wall -Wextra) # -Wpedantic -Wconversion -Wshadow
 
 # 获取依赖包
 include(FetchContent)

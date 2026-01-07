@@ -41,10 +41,10 @@ public:
   virtual void RecvHandle(void *buffer, size_t length);
 
   // 跨线程消息处理函数
-  virtual void CrossHandle(void *data, size_t length);
+  virtual void CrossThreadHandle(void *data, size_t length);
 
   // 关闭操作
-  void close() { closed_ = !event_loop_->__submit_cancel(fd_, conn_id_); }
+  void close() { closed_ = !event_loop_->submit_cancel(fd_, conn_id_); }
 
   inline EventLoop *GetEventLoop() { return event_loop_; }
 
@@ -52,18 +52,23 @@ public:
 
   inline conn_stage_t GetConnStage() const { return stage_; }
 
+  inline TimeWheel::timer_node *GetTimer() { return &idle_timer_; }
+
 private:
   conn_stage_t stage_{kConnStageHttp};
   // 直接文件描述符
   int fd_;
-  bool closed_;
-  uint64_t recv_bytes_;
-  uint64_t send_bytes_;
+  bool closed_{false};
+  uint64_t recv_bytes_{0};
+  uint64_t send_bytes_{0};
 
   // 连接id
   uint32_t conn_id_;
   // 用户id，用于业务逻辑处理
-  uint32_t user_id_;
+  uint32_t user_id_{0};
+
+  // 管理闲置连接的定时器
+  TimeWheel::timer_node idle_timer_{[this]() { this->close(); }};
 
   // 应用层协议处理类
   std::unique_ptr<ProtocolHandler> protocol_handler_;

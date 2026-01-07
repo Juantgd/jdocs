@@ -7,7 +7,14 @@
 namespace jdocs {
 
 TimeWheel::TimeWheel(uint32_t tick) : tick_(tick) {
-  start_millis_ = get_current_millis();
+  clock_gettime(CLOCK_MONOTONIC, &next_timeout_);
+  start_millis_ = uint64_t(next_timeout_.tv_sec) * 1000 +
+                  uint64_t(next_timeout_.tv_nsec) / 1000000;
+  // 缓存下一次超时的绝对时间
+  for (uint32_t i = 0; i != TIME_CACHE_SIZE; ++i) {
+    timespec_add_millis(&next_timeout_, tick_);
+    timeout_cache_[i] = next_timeout_;
+  }
 }
 
 void TimeWheel::timer_cancel(TimeWheel::timer_node *timer) {
@@ -71,7 +78,10 @@ void TimeWheel::__timer_cascade(TimeWheel::timer_head *tv, size_t index) {
 }
 
 void TimeWheel::Tick() {
-  ++current_tick_;
+  // 补充下一次超时的时间缓存
+  timespec_add_millis(&next_timeout_, tick_);
+  timeout_cache_[current_tick_++ & TIME_CACHE_MASK] = next_timeout_;
+
   size_t index = current_tick_ & TIME_WHEEL_TVR_MASK;
   if (index == 0) {
     uint32_t cascade, i = 0;

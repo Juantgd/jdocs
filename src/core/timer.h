@@ -6,16 +6,21 @@
 #include <cstdint>
 #include <functional>
 
+#include <time.h>
+
 namespace jdocs {
 
 namespace {
 
 #define TIME_WHEEL_TVR_BITS 8
 #define TIME_WHEEL_TVR_SIZE (1 << TIME_WHEEL_TVR_BITS)
-#define TIME_WHEEL_TVR_MASK TIME_WHEEL_TVR_SIZE - 1
+#define TIME_WHEEL_TVR_MASK (TIME_WHEEL_TVR_SIZE - 1)
 #define TIME_WHEEL_TVN_BITS 6
 #define TIME_WHEEL_TVN_SIZE (1 << TIME_WHEEL_TVN_BITS)
 #define TIME_WHEEL_TVN_MASK (TIME_WHEEL_TVN_SIZE - 1)
+
+#define TIME_CACHE_SIZE (1 << 2)
+#define TIME_CACHE_MASK (TIME_CACHE_SIZE - 1)
 
 } // namespace
 
@@ -28,6 +33,8 @@ public:
 
   TimeWheel(const TimeWheel &) = delete;
   TimeWheel &operator=(const TimeWheel &) = delete;
+  TimeWheel(TimeWheel &&) = default;
+  TimeWheel &operator=(TimeWheel &&) = default;
 
   struct timer_node {
     uint64_t expires_;
@@ -46,6 +53,8 @@ public:
     }
     timer_node(const timer_node &) = delete;
     timer_node &operator=(const timer_node &) = delete;
+    timer_node(timer_node &&) = default;
+    timer_node &operator=(timer_node &&) = default;
 
     inline bool IsFired() const { return flag; }
   };
@@ -54,6 +63,13 @@ public:
 
   // 添加一个n毫秒的计时器
   void AddTimer(timer_node *timer, uint32_t millis);
+
+  inline timespec *GetNextTimeout() { return &next_timeout_; }
+
+  inline timespec *GetTimeoutCache(uint32_t *size) {
+    *size = TIME_CACHE_SIZE;
+    return timeout_cache_;
+  }
 
   void Tick();
 
@@ -82,6 +98,9 @@ private:
   timer_head tv3[TIME_WHEEL_TVN_SIZE];
   timer_head tv4[TIME_WHEEL_TVN_SIZE];
   timer_head tv5[TIME_WHEEL_TVN_SIZE];
+
+  timespec timeout_cache_[TIME_CACHE_SIZE];
+  timespec next_timeout_;
 
   uint64_t current_tick_{0};
   uint64_t start_millis_;

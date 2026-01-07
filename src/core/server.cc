@@ -14,11 +14,12 @@ JdocsServer::JdocsServer(int port) : event_loop_(this, nullptr, false) {
   if (serv_fd_ < 0) {
     exit(EXIT_FAILURE);
   }
-  unsigned int nr_threads = std::thread::hardware_concurrency();
-  nr_threads_ = nr_threads ? nr_threads : 1;
-  worker_threads_.reserve(nr_threads);
+  // unsigned int nr_threads = std::thread::hardware_concurrency();
+  // nr_threads_ = nr_threads ? nr_threads : 1;
+  nr_threads_ = 1;
+  worker_threads_.reserve(nr_threads_);
   char buf[16] = {};
-  for (unsigned int i = 0; i < nr_threads; ++i) {
+  for (unsigned int i = 0; i < nr_threads_; ++i) {
     int bytes = snprintf(buf, 16, "worker-%u", i);
     assert(bytes > 0);
     worker_threads_.emplace_back(this,

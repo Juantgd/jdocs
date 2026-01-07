@@ -40,11 +40,11 @@ void HttpHandler::RecvDataHandle(TcpConnection *connection, void *buffer,
   parser.ParserExecute(buffer, length);
   if (parser.IsDone()) {
     void *send_buf;
-    int bidx = connection->GetEventLoop()->__get_send_buffer(&send_buf);
+    int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
     if (bidx != -1) {
       size_t prep_send_bytes =
           generate_response_101(send_buf, parser.websocket_key_);
-      connection->GetEventLoop()->__prep_send_zc(
+      connection->GetEventLoop()->prep_send_zc(
           connection->fd(), connection->conn_id(), send_buf,
           static_cast<uint16_t>(bidx), prep_send_bytes);
       // 升级为websocket协议
@@ -60,10 +60,10 @@ void HttpHandler::RecvDataHandle(TcpConnection *connection, void *buffer,
       spdlog::error("HTTP Protocol parser failed. error: {}",
                     parser.GetError());
       void *send_buf;
-      int bidx = connection->GetEventLoop()->__get_send_buffer(&send_buf);
+      int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
       if (bidx != -1) {
         size_t prep_send_bytes = generate_response_400(send_buf);
-        connection->GetEventLoop()->__prep_send_zc(
+        connection->GetEventLoop()->prep_send_zc(
             connection->fd(), connection->conn_id(), send_buf,
             static_cast<uint16_t>(bidx), prep_send_bytes, true);
       } else {

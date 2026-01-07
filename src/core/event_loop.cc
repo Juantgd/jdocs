@@ -10,13 +10,25 @@
 
 #include "protocol/websocket/websocket_handler.h"
 #include "server.h"
+#include "utils/helpers.h"
 
 namespace jdocs {
 
 EventLoop::EventLoop(JdocsServer *server, Worker *worker, bool flag)
     : server_(server), worker_(worker), flag_(flag) {
   SetUpIoUring(kQueueDepth);
-  buffer_pool_ = std::make_unique<BufferPool>(&ring_);
+  // 只有worker线程需要
+  if (flag_) {
+    buffer_pool_ = std::make_unique<BufferPool>(&ring_);
+    time_wheel_ = std::make_unique<TimeWheel>();
+    uint32_t count;
+    timespec *tsv = time_wheel_->GetTimeoutCache(&count);
+    // 启动时，批量提交超时请求
+    for (uint32_t i = 0; i < count; ++i) {
+      __prep_timeout(&tsv[i]);
+    }
+    // spdlog::info("[start]: {}", get_current_millis());
+  }
 }
 
 EventLoop::~EventLoop() { DestroyIoUring(); }
@@ -139,7 +151,7 @@ struct io_uring_sqe *EventLoop::GetSqe() {
   return sqe;
 }
 
-int EventLoop::__prep_recv(int fd, uint32_t conn_id) {
+int EventLoop::prep_recv(int fd, uint32_t conn_id) {
   struct io_uring_sqe *sqe = GetSqe();
   io_uring_prep_recv_multishot(sqe, fd, NULL, 0, 0);
   sqe->flags |= IOSQE_FIXED_FILE | IOSQE_BUFFER_SELECT;
@@ -160,8 +172,8 @@ int EventLoop::__prep_recv(int fd, uint32_t conn_id) {
 // }
 
 // 零拷贝发送操作
-int EventLoop::__prep_send_zc(int fd, uint32_t conn_id, void *data,
-                              uint16_t bidx, size_t length, bool flag) {
+int EventLoop::prep_send_zc(int fd, uint32_t conn_id, void *data, uint16_t bidx,
+                            size_t length, bool flag) {
   struct io_uring_sqe *sqe = GetSqe();
   io_uring_prep_send_zc(sqe, fd, data, length, MSG_WAITALL | MSG_NOSIGNAL, 0);
   sqe->buf_index = bidx;
@@ -173,7 +185,7 @@ int EventLoop::__prep_send_zc(int fd, uint32_t conn_id, void *data,
   return 0;
 }
 
-int EventLoop::__prep_close(int fd, uint32_t conn_id) {
+int EventLoop::prep_close(int fd, uint32_t conn_id) {
   struct io_uring_sqe *sqe = GetSqe();
   io_uring_prep_shutdown(sqe, fd, SHUT_RDWR);
   sqe->flags |= IOSQE_FIXED_FILE | IOSQE_IO_LINK | IOSQE_CQE_SKIP_SUCCESS;
@@ -185,7 +197,7 @@ int EventLoop::__prep_close(int fd, uint32_t conn_id) {
 }
 
 // 准备向其他事件循环中的io_uring实例提交sqe，实现跨线程通讯
-int EventLoop::__prep_cross_thread_msg(uint32_t conn_id, CTContext *context) {
+int EventLoop::prep_cross_thread_msg(uint32_t conn_id, CTContext *context) {
   struct io_uring_sqe *sqe = GetSqe();
   uint64_t user_data = ctcontext_encode(conn_id, ctcontext_low_addr(context));
   int ring_fd = server_->ConnectionIdToRingFd(conn_id);
@@ -195,7 +207,8 @@ int EventLoop::__prep_cross_thread_msg(uint32_t conn_id, CTContext *context) {
   return 0;
 }
 
-int EventLoop::__submit_cancel(int fd, uint32_t conn_id) {
+// 提交取消请求，准备关闭连接
+int EventLoop::submit_cancel(int fd, uint32_t conn_id) {
   struct io_uring_sqe *sqe = GetSqe();
   io_uring_prep_cancel_fd(sqe, fd, IORING_ASYNC_CANCEL_FD_FIXED);
   user_data_encode(sqe, __CANCEL, conn_id, fd, 0);
@@ -204,6 +217,7 @@ int EventLoop::__submit_cancel(int fd, uint32_t conn_id) {
 }
 
 // 通过io_uring_prep_msg_ring_fd_alloc将连接的文件描述符传递给对应的ring实例
+// TODO: 是否需要close_direct？
 int EventLoop::handle_accept(struct io_uring_cqe *cqe) {
   if (cqe->res < 0) {
     spdlog::error("io_uring_prep_multishot_accept_direct failed. error: {}",
@@ -216,12 +230,11 @@ int EventLoop::handle_accept(struct io_uring_cqe *cqe) {
   }
   spdlog::info("[master] New Connection Accepted, fd: {}", cqe->res);
   // 通过轮询的方式将新连接分发给不同的worker线程
-  struct io_uring *other_ring = server_->GetNextRingInstance();
+  int ring_fd = server_->GetNextRingInstance()->ring_fd;
   uint32_t conn_id = server_->GetNextConnectionId();
   struct io_uring_sqe *sqe = GetSqe();
   uint64_t user_data = context_encode(__FD_PASS, conn_id, 0, 0);
-  io_uring_prep_msg_ring_fd_alloc(sqe, other_ring->ring_fd, cqe->res, user_data,
-                                  0);
+  io_uring_prep_msg_ring_fd_alloc(sqe, ring_fd, cqe->res, user_data, 0);
   user_data_encode(sqe, __NOP, conn_id, cqe->res, 0);
   // 如果IORING_CQE_F_MORE标志未设置，则需要重新提交accept请求
   if (!(cqe->flags & IORING_CQE_F_MORE)) {
@@ -244,12 +257,17 @@ int EventLoop::handle_fd_pass(struct io_uring_cqe *cqe) {
     spdlog::warn("The direct descriptor table in the ring is full.");
     return 0;
   }
-  spdlog::info("[{}] Accepted a new fd: {}", worker_->GetName(), cqe->res);
   uint32_t conn_id = cqe_to_conn_id(cqe);
-  worker_->AddConnection(
-      conn_id, std::make_shared<TcpConnection>(this, cqe->res, conn_id));
+  spdlog::info("[{}] Accepted a new fd: {}, conn_id: {}", worker_->GetName(),
+               cqe->res, conn_id);
+  std::shared_ptr<TcpConnection> connection =
+      std::make_shared<TcpConnection>(this, cqe->res, conn_id);
+  worker_->AddConnection(conn_id, connection);
+  AddTimer(connection->GetTimer(), kConnIdleTimeout);
   // 开始发起接受请求
-  __prep_recv(cqe->res, conn_id);
+  prep_recv(cqe->res, conn_id);
+  spdlog::info("[{}] current time: {}", worker_->GetName(),
+               get_current_millis());
   return 0;
 }
 
@@ -259,7 +277,7 @@ int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
       spdlog::info("[{}] no avaliable buffers", worker_->GetName());
       // 需要对缓冲池进行扩容，并重新提交接受数据请求
       buffer_pool_->alloc_recv_buffers();
-      __prep_recv(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
+      prep_recv(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
     } else if (cqe->res != -ECANCELED) {
       spdlog::error("recv multishot failed. error: {}", strerror(-cqe->res));
       return -1;
@@ -274,6 +292,8 @@ int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
     connection->close();
     return 0;
   }
+  // 更新连接超时定时器
+  AddTimer(connection->GetTimer(), kConnIdleTimeout);
   uint16_t bid = cqe->flags >> IORING_CQE_BUFFER_SHIFT;
   void *recv_buf = buffer_pool_->GetRecvBuffer(bid);
   if (!recv_buf) {
@@ -284,14 +304,16 @@ int EventLoop::handle_recv(struct io_uring_cqe *cqe) {
                cqe->res, fd, bid);
 
   // 对该连接对象进行业务处理
-  if (!connection->closed())
+  if (!connection->closed()) {
+    spdlog::info("[{}] call receive handle.", worker_->GetName());
     connection->RecvHandle(recv_buf, static_cast<size_t>(cqe->res));
+  }
 
   // 处理完毕后需要将接收缓冲区放回缓存池中
   buffer_pool_->ReplenishRecvBuffer(recv_buf, bid);
 
   if (!(cqe->flags & IORING_CQE_F_MORE)) {
-    __prep_recv(fd, cqe_to_conn_id(cqe));
+    prep_recv(fd, cqe_to_conn_id(cqe));
   }
 
   return 0;
@@ -330,7 +352,8 @@ int EventLoop::handle_send_zc(struct io_uring_cqe *cqe) {
   uint16_t bidx = cqe_to_bid(cqe);
   // 此时可以复用该发送缓冲区
   if (cqe->flags & IORING_CQE_F_NOTIF) {
-    spdlog::info("send buffer recycle, buffer_index: {}", bidx);
+    spdlog::info("[{}] send buffer recycle, buffer_index: {}",
+                 worker_->GetName(), bidx);
     buffer_pool_->ReplenishSendBuffer(bidx);
   } else {
     std::shared_ptr<TcpConnection> connection =
@@ -367,12 +390,15 @@ int EventLoop::handle_close(struct io_uring_cqe *cqe) {
                   strerror(-cqe->res));
     return -1;
   }
-  if (flag_) {
-    spdlog::info("[{}] connection closed, fd: {}", worker_->GetName(),
-                 cqe_to_fd(cqe));
-  } else {
+  if (!flag_) {
     spdlog::info("[master] connection closed, fd: {}", cqe_to_fd(cqe));
+    return 0;
   }
+  spdlog::info("[{}] connection closed, fd: {}, conn_id: {}",
+               worker_->GetName(), cqe_to_fd(cqe), cqe_to_conn_id(cqe));
+
+  spdlog::info("[{}] current time: {}", worker_->GetName(),
+               get_current_millis());
   worker_->DelConnection(cqe_to_conn_id(cqe));
   return 0;
 }
@@ -380,7 +406,7 @@ int EventLoop::handle_close(struct io_uring_cqe *cqe) {
 // 当取消操作完成后，需要对连接进行关闭操作
 int EventLoop::handle_cancel(struct io_uring_cqe *cqe) {
   spdlog::info("[{}] got cancel fd: {}", worker_->GetName(), cqe_to_fd(cqe));
-  __prep_close(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
+  prep_close(cqe_to_fd(cqe), cqe_to_conn_id(cqe));
   return 0;
 }
 
@@ -414,6 +440,15 @@ int EventLoop::handle_cross_thread_msg(struct io_uring_cqe *cqe) {
   return 0;
 }
 
+// 准备下一次超时
+void EventLoop::__prep_timeout(timespec *ts) {
+  io_uring_sqe *sqe = GetSqe();
+  // 使用绝对时间
+  io_uring_prep_timeout(sqe, (struct __kernel_timespec *)ts, 0,
+                        IORING_TIMEOUT_ABS);
+  user_data_encode(sqe, __TIMEOUT, 0, 0, 0);
+}
+
 // 定时器事件处理函数，处理当前超时的事件
 int EventLoop::handle_timeout(struct io_uring_cqe *cqe) {
   if (cqe->res != -ETIME) {
@@ -421,11 +456,14 @@ int EventLoop::handle_timeout(struct io_uring_cqe *cqe) {
                   strerror(-cqe->res));
     return -1;
   }
-  // TODO: 开始处理超时事件，如连接超时则进行关闭操作
+  // spdlog::info("[{}][tick]: {}", worker_->GetName(), get_current_millis());
+  // 开始处理超时事件，处理超时任务
+  time_wheel_->Update();
+  __prep_timeout(time_wheel_->GetNextTimeout());
   return 0;
 }
 
-int EventLoop::__get_send_buffer(void **buffer_ptr) {
+int EventLoop::get_send_buffer(void **buffer_ptr) {
   int bidx = buffer_pool_->GetSendBufferIndex();
   if (bidx == -1) {
     *buffer_ptr = NULL;

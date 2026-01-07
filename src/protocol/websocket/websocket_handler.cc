@@ -154,7 +154,7 @@ void WebSocketHandler::control_frame_handle(TcpConnection *connection) {
 void WebSocketHandler::send_close_frame(TcpConnection *connection,
                                         uint16_t code, bool flag) {
   void *send_buf;
-  int bidx = connection->GetEventLoop()->__get_send_buffer(&send_buf);
+  int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
   if (bidx == -1) {
     // 没有可用的发送缓冲区，说明服务器目前负载压力过大，直接关闭该连接
     connection->close();
@@ -164,7 +164,7 @@ void WebSocketHandler::send_close_frame(TcpConnection *connection,
                WebSocketParser::close_message(code));
   size_t prep_send_bytes =
       WebSocketParser::generate_close_frame(code, send_buf);
-  connection->GetEventLoop()->__prep_send_zc(
+  connection->GetEventLoop()->prep_send_zc(
       connection->fd(), connection->conn_id(), send_buf,
       static_cast<uint16_t>(bidx), prep_send_bytes, flag);
   handle_state_ = ws_handle_state_t::kWsHandleStateClosing;
@@ -173,16 +173,16 @@ void WebSocketHandler::send_close_frame(TcpConnection *connection,
 void WebSocketHandler::send_pong_frame(TcpConnection *connection, void *payload,
                                        size_t length) {
   void *send_buf;
-  int bidx = connection->GetEventLoop()->__get_send_buffer(&send_buf);
+  int bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
   if (bidx == -1) {
     connection->close();
     return;
   }
   size_t prep_send_bytes = encapsulation_package(
       true, WebSocketParser::WS_OPCODE_PONG, send_buf, payload, length);
-  connection->GetEventLoop()->__prep_send_zc(connection->fd(),
-                                             connection->conn_id(), send_buf,
-                                             (uint16_t)bidx, prep_send_bytes);
+  connection->GetEventLoop()->prep_send_zc(connection->fd(),
+                                           connection->conn_id(), send_buf,
+                                           (uint16_t)bidx, prep_send_bytes);
 }
 
 void WebSocketHandler::send_data_frame(TcpConnection *connection, void *data,
@@ -193,7 +193,7 @@ void WebSocketHandler::send_data_frame(TcpConnection *connection, void *data,
   size_t payload_length, prep_send_bytes;
   WebSocketParser::ws_opcode_t opcode;
   do {
-    bidx = connection->GetEventLoop()->__get_send_buffer(&send_buf);
+    bidx = connection->GetEventLoop()->get_send_buffer(&send_buf);
     if (bidx == -1) {
       spdlog::error("send_data_frame failed. not avaliable buffer to send.");
       connection->close();
@@ -212,7 +212,7 @@ void WebSocketHandler::send_data_frame(TcpConnection *connection, void *data,
     }
     prep_send_bytes =
         encapsulation_package(fin_flag, opcode, send_buf, data, payload_length);
-    connection->GetEventLoop()->__prep_send_zc(
+    connection->GetEventLoop()->prep_send_zc(
         connection->fd(), connection->conn_id(), send_buf, (uint16_t)bidx,
         prep_send_bytes, !fin_flag);
     data = (char *)data + payload_length;
