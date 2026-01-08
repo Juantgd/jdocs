@@ -1,9 +1,10 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "tcp_connection.h"
 
 #include "protocol/http/http_handler.h"
 #include "protocol/websocket/websocket_handler.h"
+#include "services/chat_service.h"
 
 namespace jdocs {
 
@@ -25,6 +26,10 @@ void TcpConnection::RecvHandle(void *buffer, size_t length) {
     return;
   recv_bytes_ += length;
   protocol_handler_->RecvDataHandle(buffer, length);
+}
+
+std::string TcpConnection::ServiceHandle(std::string data) {
+  return service_handler_->handle(std::move(data));
 }
 
 void TcpConnection::CrossThreadHandle(void *data, size_t length) {}

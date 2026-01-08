@@ -18,7 +18,7 @@ constexpr uint8_t raw_ping_frame[] = {0x89, 0x0B, 0x41, 0x72, 0x65, 0x20, 0x79,
                                       0x6F, 0x75, 0x20, 0x6F, 0x6B, 0x3F};
 
 // 发送ping帧后等待pong帧的超时时间，默认30秒
-constexpr static uint32_t kTimeToCloseAfterPing = 30000;
+constexpr uint32_t kTimeToCloseAfterPing = 30000;
 
 } // namespace
 

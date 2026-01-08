@@ -1,16 +1,20 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_PROTOCOL_HTTP_PARSER_H_
 #define JDOCS_PROTOCOL_HTTP_PARSER_H_
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
+#include <unordered_map>
 
 namespace jdocs {
 
 namespace {
-// http请求报文中头部字段和字段值的最大长度限制，默认256字节
-constexpr const uint32_t kHttpHeaderElementSize = 256;
+// http请求报文中头部字段和字段值的最大长度限制，默认512字节
+constexpr uint32_t kHttpHeaderElementSize = 512;
+// http请求报文中请求URI最大长度限制，默认1024字节
+constexpr uint32_t kHttpRequestUriSize = 1024;
 
 #define kHttpMethod "GET"
 #define kHttpVersion "HTTP/1.1"
@@ -27,7 +31,7 @@ constexpr const uint32_t kHttpHeaderElementSize = 256;
 #define kHttpSecWebsocketExtensions "sec-websocket-extensions"
 #define kMagicValue "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
-constexpr static char tokens[256] = {
+constexpr char tokens[256] = {
     /*   0 nul    1 soh    2 stx    3 etx    4 eot    5 enq    6 ack    7
        bel */
     0, 0, 0, 0, 0, 0, 0, 0,
@@ -77,13 +81,30 @@ constexpr static char tokens[256] = {
        del */
     'x', 'y', 'z', 0, '|', 0, '~', 0};
 
-constexpr static const char websocket_key_valid[256] = {
+constexpr char websocket_key_valid[256] = {
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
     0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
     1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0};
+
+constexpr char uri_encode_valid[256] = {
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+
+constexpr uint8_t uri_hex_map[256] = {
+    0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0,
+    0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0,
+    0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  2,  3,  4, 5, 6, 7, 8,
+    9, 0, 0,  0,  0,  0,  0,  0,  10, 11, 12, 13, 14, 15, 0, 0, 0, 0, 0,
+    0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0,
+    0, 0, 10, 11, 12, 13, 14, 15, 0,  0,  0,  0,  0,  0,  0, 0, 0, 0, 0,
+    0, 0, 0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0};
 
 #define HTTP_PARSER_ERROR_MAP(X)                                               \
   X(0, NEED_MORE_DATA, "Need More Data To Parsing")                            \
@@ -102,6 +123,24 @@ constexpr const char *errors_desc_table[] = {
 #undef X
 };
 
+enum error_code_t {
+#define X(n, name, str) PARSER_ERROR_##name = n,
+  HTTP_PARSER_ERROR_MAP(X)
+#undef X
+};
+
+// 用于判断websocket协议的http握手报文是否符合规则
+enum websocket_handshake_flag {
+  WS_HANDSHAKE_FLAG_HOST = 1 << 0,
+  WS_HANDSHAKE_FLAG_CONNECTION = 1 << 1,
+  WS_HANDSHAKE_FLAG_CONNECTION_UPGRADE = 1 << 2,
+  WS_HANDSHAKE_FLAG_UPGRADE = 1 << 3,
+  WS_HANDSHAKE_FLAG_UPGRADE_WEBSOCKET = 1 << 4,
+  WS_HANDSHAKE_FLAG_WEBSOCKET_KEY = 1 << 5,
+  WS_HANDSHAKE_FLAG_WEBSOCKET_VERSION = 1 << 6,
+  WS_HANDSHAKE_FLAG_WEBSOCKET_VERSION_13 = 1 << 7,
+  WS_HANDSHAKE_FLAG_COMPLETE = (1 << 8) - 1
+};
 } // namespace
 
 struct HttpParser {
@@ -120,7 +159,12 @@ struct HttpParser {
     kHttpParserStart = 0,
     kHttpParserMethod,
     kHttpParserBeforeUri,
-    kHttpParserUri,
+    kHttpParserUriLocation,
+    kHttpParserUriLocationDecode,
+    kHttpParserUriQueryKey,
+    kHttpParserUriQueryKeyDecode,
+    kHttpParserUriQueryValue,
+    kHttpParserUriQueryValueDecode,
     kHttpParserAfterUri,
     kHttpParserVersion,
     kHttpParserAfterVersion,
@@ -149,35 +193,19 @@ struct HttpParser {
     kHeaderSecWebsocketVersion13
   };
 
-  enum error_code_t {
-#define X(n, name, str) PARSER_ERROR_##name = n,
-    HTTP_PARSER_ERROR_MAP(X)
-#undef X
-  };
-
-  // 用于判断websocket协议的http握手报文是否符合规则
-  enum websocket_handshake_flag {
-    WS_HANDSHAKE_FLAG_HOST = 1 << 0,
-    WS_HANDSHAKE_FLAG_CONNECTION = 1 << 1,
-    WS_HANDSHAKE_FLAG_CONNECTION_UPGRADE = 1 << 2,
-    WS_HANDSHAKE_FLAG_UPGRADE = 1 << 3,
-    WS_HANDSHAKE_FLAG_UPGRADE_WEBSOCKET = 1 << 4,
-    WS_HANDSHAKE_FLAG_WEBSOCKET_KEY = 1 << 5,
-    WS_HANDSHAKE_FLAG_WEBSOCKET_VERSION = 1 << 6,
-    WS_HANDSHAKE_FLAG_WEBSOCKET_VERSION_13 = 1 << 7,
-    WS_HANDSHAKE_FLAG_COMPLETE = (1 << 8) - 1
-  };
-
   // 当前解析器的解析状态
-  parser_state_t state_;
+  parser_state_t state_{0};
   // 当前解析器中的头部字段解析状态
-  parser_header_state_t header_state_;
+  parser_header_state_t header_state_{0};
   // 缓存接收到的http请求报文中uri的值
-  char request_uri_[kHttpHeaderElementSize];
+  std::string location_;
+  std::unordered_map<std::string, std::string> query_args_;
+  std::string key_cache_;
+  std::string value_cache_;
   // 缓存origin字段的值
-  char origin_[kHttpHeaderElementSize];
+  std::string origin_;
   // 缓存host字段的值
-  char host_[kHttpHeaderElementSize];
+  std::string host_;
   // 保存sec-websocket-key字段的值，以便生成sec-websocket-accept字段值
   char websocket_key_[62]{0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
                           0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
@@ -186,19 +214,13 @@ struct HttpParser {
                           'D', 'A', '-', '9', '5', 'C', 'A', '-', 'C', '5',
                           'A', 'B', '0', 'D', 'C', '8', '5', 'B', '1', '1'};
   // 检测当前http请求报文的头部字段是否满足websocket握手报文所需
-  uint8_t flags_;
+  uint8_t flags_{0};
   // 保存解析器的错误代码，以便用来生成对应的响应报文
-  uint8_t error_code_;
+  uint8_t error_code_{0};
   // 辅助解析函数的执行
-  size_t index_;
+  size_t index_{0};
   // 同上
-  size_t count_;
-  // request_uri字段长度
-  size_t request_uri_length_;
-  // origin字段长度
-  size_t origin_length_;
-  // host字段长度
-  size_t host_length_;
+  size_t count_{0};
 };
 
 } // namespace jdocs

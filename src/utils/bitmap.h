@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_UTILS_BITMAP_H_
 #define JDOCS_UTILS_BITMAP_H_

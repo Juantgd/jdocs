@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "bitmap.h"
 

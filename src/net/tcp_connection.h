@@ -1,13 +1,15 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_NET_TCP_CONNECTION_H_
 #define JDOCS_NET_TCP_CONNECTION_H_
 
 #include <cstdint>
 #include <memory>
+#include <string>
 
 #include "core/event_loop.h"
 #include "protocol_handler.h"
+#include "service_handler.h"
 
 namespace jdocs {
 
@@ -35,13 +37,16 @@ public:
   inline uint64_t send_bytes() const { return send_bytes_; }
 
   // 写操作完成处理函数，传入已写入的缓冲区地址和字节数
-  virtual void SendHandle(size_t length);
+  void SendHandle(size_t length);
 
   // 读操作完成处理函数，传入已读取的缓冲区地址和读取的字节数
-  virtual void RecvHandle(void *buffer, size_t length);
+  void RecvHandle(void *buffer, size_t length);
+
+  // 业务处理函数
+  std::string ServiceHandle(std::string data);
 
   // 跨线程消息处理函数
-  virtual void CrossThreadHandle(void *data, size_t length);
+  void CrossThreadHandle(void *data, size_t length);
 
   // 关闭操作
   void close() {
@@ -77,6 +82,9 @@ private:
 
   // 应用层协议处理类
   std::unique_ptr<ProtocolHandler> protocol_handler_;
+
+  // 服务处理类
+  std::unique_ptr<ServiceHandler> service_handler_;
 
   // 指向该文件描述符所属的事件循环
   EventLoop *event_loop_;

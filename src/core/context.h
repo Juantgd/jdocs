@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_CORE_CONTEXT_H_
 #define JDOCS_CORE_CONTEXT_H_

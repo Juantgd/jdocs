@@ -1,6 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
-
-#include <spdlog/spdlog.h>
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "core/server.h"
 

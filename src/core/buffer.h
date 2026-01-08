@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_CORE_BUFFER_H_
 #define JDOCS_CORE_BUFFER_H_
@@ -8,21 +8,19 @@
 
 #include <liburing.h>
 
-#include <spdlog/spdlog.h>
-
 #include "utils/bitmap.h"
 
 namespace jdocs {
 
 // 缓冲区块大小，默认2048字节
-constexpr const uint32_t kBufferSize = 2048;
+constexpr uint32_t kBufferSize = 2048;
 namespace {
 // 线程缓冲区条目最大数量
-constexpr static uint32_t kBufferEntriesMax = 1 << 14;
+constexpr uint32_t kBufferEntriesMax = 1 << 14;
 // 缓冲池扩容大小（块大小），默认512KB
-constexpr static uint32_t kBlockSize = 2048 * 256;
+constexpr uint32_t kBlockSize = 2048 * 256;
 // 将块分割为缓冲区的数量
-constexpr static uint32_t kBufferCount = kBlockSize / kBufferSize;
+constexpr uint32_t kBufferCount = kBlockSize / kBufferSize;
 } // namespace
 
 // 提供recv/send操作所需要的缓冲区

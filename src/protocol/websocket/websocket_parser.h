@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_PROTOCOL_WEBSOCKET_PARSER_H_
 #define JDOCS_PROTOCOL_WEBSOCKET_PARSER_H_
@@ -37,7 +37,7 @@ namespace {
 } // namespace
 
 // websocket协议最大载荷长度限制，64KB大小
-constexpr const uint32_t kMaxPayloadLength = 1 << 16;
+constexpr uint32_t kMaxPayloadLength = 1 << 16;
 
 struct WebSocketParser {
   WebSocketParser() = default;
@@ -75,7 +75,7 @@ struct WebSocketParser {
 #undef X
   };
 
-  parser_state_t state_;
+  parser_state_t state_{0};
   uint8_t fin_flag_ : 1;
   uint8_t rsv1_flag_ : 1;
   uint8_t rsv2_flag_ : 1;

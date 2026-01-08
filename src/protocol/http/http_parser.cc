@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "http_parser.h"
 
@@ -49,23 +49,138 @@ size_t HttpParser::ParserExecute(void *buffer, size_t length) {
         error_code_ = error_code_t::PARSER_ERROR_PROTOCOL_ERROR;
         return 0;
       }
-      state_ = parser_state_t::kHttpParserUri;
+      state_ = parser_state_t::kHttpParserUriLocation;
       index_ = 0;
       goto reexecute;
       break;
     }
-    case parser_state_t::kHttpParserUri: {
+    case parser_state_t::kHttpParserUriLocation: {
+      if (++index_ > kHttpRequestUriSize || ch == '#') {
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
+        return 0;
+      }
       if (ch == ' ') {
         state_ = parser_state_t::kHttpParserAfterUri;
         index_ = 0;
         goto reexecute;
       }
-      if (index_ >= kHttpHeaderElementSize - 1) {
-        error_code_ = error_code_t::PARSER_ERROR_FIELD_OUT_OF_RANGE;
+      if (ch == '?') {
+        state_ = parser_state_t::kHttpParserUriQueryKey;
+        break;
+      }
+      if (ch == '%') {
+        state_ = parser_state_t::kHttpParserUriLocationDecode;
+        count_ = 0;
+        break;
+      }
+      location_.push_back(ch);
+      break;
+    }
+    case parser_state_t::kHttpParserUriLocationDecode: {
+      // 无效编码
+      if (++index_ > kHttpRequestUriSize || !uri_encode_valid[(uint8_t)ch]) {
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
         return 0;
       }
-      request_uri_[index_++] = ch;
-      ++request_uri_length_;
+      if (count_ == 0) {
+        ++count_;
+        location_.push_back(uri_hex_map[(uint8_t)ch] << 4);
+        break;
+      }
+      state_ = parser_state_t::kHttpParserUriLocation;
+      location_.back() |= uri_hex_map[(uint8_t)ch];
+      break;
+    }
+    case parser_state_t::kHttpParserUriQueryKey: {
+      if (++index_ > kHttpRequestUriSize || ch == ' ' || ch == '#') {
+        // 查询参数中不能出现
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
+        return 0;
+      }
+      if (ch == '=') {
+        if (key_cache_.empty()) {
+          error_code_ = error_code_t::PARSER_ERROR_PROTOCOL_ERROR;
+          return 0;
+        }
+        state_ = parser_state_t::kHttpParserUriQueryValue;
+        break;
+      }
+      if (ch == '%') {
+        state_ = parser_state_t::kHttpParserUriQueryKeyDecode;
+        count_ = 0;
+        break;
+      }
+      if (ch == '+') {
+        key_cache_.push_back(' ');
+        break;
+      }
+      key_cache_.push_back(ch);
+      break;
+    }
+    case parser_state_t::kHttpParserUriQueryKeyDecode: {
+      if (++index_ > kHttpRequestUriSize || !uri_encode_valid[(uint8_t)ch]) {
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
+        return 0;
+      }
+      if (count_ == 0) {
+        ++count_;
+        key_cache_.push_back(uri_hex_map[(uint8_t)ch] << 4);
+        break;
+      }
+      state_ = parser_state_t::kHttpParserUriQueryKey;
+      key_cache_.back() |= uri_hex_map[(uint8_t)ch];
+      break;
+    }
+    case parser_state_t::kHttpParserUriQueryValue: {
+      if (++index_ > kHttpRequestUriSize || ch == '#') {
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
+        return 0;
+      }
+      if (ch == ' ' || ch == '&') {
+        if (value_cache_.empty()) {
+          error_code_ = error_code_t::PARSER_ERROR_PROTOCOL_ERROR;
+          return 0;
+        }
+        auto it = query_args_.find(key_cache_);
+        // TODO: 该查询参数的值为一个数组，直接覆盖旧值
+        if (it != query_args_.end()) {
+          it->second = std::move(value_cache_);
+          key_cache_.clear();
+        } else {
+          query_args_.insert({std::move(key_cache_), std::move(value_cache_)});
+        }
+        if (ch == ' ') {
+          state_ = parser_state_t::kHttpParserAfterUri;
+          index_ = 0;
+          goto reexecute;
+        }
+        state_ = parser_state_t::kHttpParserUriQueryKey;
+        break;
+      }
+      if (ch == '+') {
+        value_cache_.push_back(' ');
+        break;
+      }
+      if (ch == '%') {
+        state_ = parser_state_t::kHttpParserUriQueryValueDecode;
+        count_ = 0;
+        break;
+      }
+      value_cache_.push_back(ch);
+      break;
+    }
+    case parser_state_t::kHttpParserUriQueryValueDecode: {
+      if (++index_ > kHttpRequestUriSize || !uri_encode_valid[(uint8_t)ch]) {
+        error_code_ = error_code_t::PARSER_ERROR_INVALID_URI;
+        return 0;
+      }
+      if (count_ == 0) {
+        ++count_;
+        value_cache_.push_back(uri_hex_map[(uint8_t)ch] << 4);
+        break;
+      }
+      state_ = parser_state_t::kHttpParserUriQueryValue;
+      value_cache_.back() |= uri_hex_map[(uint8_t)ch];
       break;
     }
     case parser_state_t::kHttpParserAfterUri: {
@@ -314,13 +429,11 @@ size_t HttpParser::ParserExecute(void *buffer, size_t length) {
       case parser_header_state_t::kHeaderNormal:
         break;
       case parser_header_state_t::kHeaderHost: {
-        host_[index_] = ch;
-        ++host_length_;
+        host_.push_back(ch);
         break;
       }
       case parser_header_state_t::kHeaderOrigin: {
-        origin_[index_] = ch;
-        ++origin_length_;
+        origin_.push_back(ch);
         break;
       }
       case parser_header_state_t::kHeaderConnection: {
@@ -445,12 +558,16 @@ size_t HttpParser::ParserExecute(void *buffer, size_t length) {
 void HttpParser::Reset() {
   state_ = parser_state_t::kHttpParserStart;
   header_state_ = parser_header_state_t::kHeaderNormal;
+  location_.clear();
+  query_args_.clear();
+  key_cache_.clear();
+  value_cache_.clear();
+  origin_.clear();
+  host_.clear();
   error_code_ = 0;
   index_ = 0;
   count_ = 0;
-  request_uri_length_ = 0;
-  origin_length_ = 0;
-  host_length_ = 0;
+  flags_ = 0;
 }
 
 } // namespace jdocs

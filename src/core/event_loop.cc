@@ -1,4 +1,4 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "event_loop.h"
 
@@ -161,10 +161,13 @@ int EventLoop::prep_recv(int fd, uint32_t conn_id) {
 }
 
 // 无需获取固定缓冲区，用于发送较小的数据包
-int EventLoop::prep_send(int fd, uint32_t conn_id, void *data, size_t length) {
+int EventLoop::prep_send(int fd, uint32_t conn_id, void *data, size_t length,
+                         bool flag) {
   struct io_uring_sqe *sqe = GetSqe();
   io_uring_prep_send(sqe, fd, data, length, MSG_WAITALL | MSG_NOSIGNAL);
   sqe->flags |= IOSQE_FIXED_FILE;
+  if (flag)
+    sqe->flags |= IOSQE_IO_LINK;
   user_data_encode(sqe, __SEND, conn_id, fd, 0);
   return 0;
 }

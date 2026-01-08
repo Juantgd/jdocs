@@ -18,6 +18,10 @@ namespace {
   "Upgrade: websocket\r\n"                                                     \
   "Server: jdocs_server\r\n"                                                   \
   "Sec-WebSocket-Accept: "
+#define kHttpResponse404                                                       \
+  "HTTP/1.1 404 Not Found\r\nServer: jdocs_server\r\nContent-Type: "           \
+  "text/plain; charset-utf8\r\nContent-Length: 38\r\nConnection: "             \
+  "Close\r\n\r\nThe requested resource does not exist."
 
 } // namespace
 
@@ -34,11 +38,18 @@ private:
   // 用于生成sec-websocket-accept的值
   static int generate_accept_key(const char *key, char *buffer);
 
-  // 生成101响应报文
-  static size_t generate_response_101(void *buffer, const char *key);
+  // 发送101响应报文
+  void send_response_101(const char *key);
 
-  // 生成400错误请求报文
-  static size_t generate_response_400(void *buffer);
+  // 发送400错误请求报文
+  void send_response_400();
+
+  // 发送404请求资源不存在报文
+  void send_response_404();
+
+  bool request_uri_parse();
+
+  void parsing_fail_handle();
 
   HttpParser parser;
 };

@@ -1,7 +1,9 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #ifndef JDOCS_CORE_EVENT_LOOP_H_
 #define JDOCS_CORE_EVENT_LOOP_H_
+
+#include <memory>
 
 #include <liburing.h>
 
@@ -14,14 +16,14 @@ namespace jdocs {
 // 一些常量的定义，只能在该文件内所使用
 namespace {
 // io_uring实例队列最大条目数量
-constexpr static uint32_t kQueueDepth = 2048;
+constexpr uint32_t kQueueDepth = 2048;
 // io_uring实例注册的文件描述符表大小
-constexpr static uint32_t kFdTableSize = 2048;
+constexpr uint32_t kFdTableSize = 2048;
 // io_uring轮询线程闲置超时时间，ms为单位
 // constexpr static uint32_t kThreadIdleTime = 2000;
 
 // 闲置连接超时关闭时间，默认60s
-constexpr static uint32_t kConnIdleTimeout = 60000;
+constexpr uint32_t kConnIdleTimeout = 60000;
 
 } // namespace
 
@@ -48,7 +50,8 @@ public:
   int prep_recv(int fd, uint32_t conn_id);
 
   // 无需获取固定缓冲区，用于发送较小的数据包
-  int prep_send(int fd, uint32_t conn_id, void *data, size_t length);
+  int prep_send(int fd, uint32_t conn_id, void *data, size_t length,
+                bool flag = false);
 
   int prep_send_zc(int fd, uint32_t conn_id, void *data, uint16_t bidx,
                    size_t length, bool flag = false);

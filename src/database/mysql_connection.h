@@ -1,12 +1,10 @@
 // Copyright (c) 2025 Juantgd. All Rights Reserved.
 
-#ifndef JDOCS_DATABASE_MYSQL_POOL_H_
-#define JDOCS_DATABASE_MYSQL_POOL_H_
+#ifndef JDOCS_DATABASE_MYSQL_CONNECTION_H_
+#define JDOCS_DATABASE_MYSQL_CONNECTION_H_
 
 #include <mysql/mysql.h>
 #include <nlohmann/json.hpp>
-
-// 提供mysql数据库连接池
 
 namespace jdocs {
 

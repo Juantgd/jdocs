@@ -1,6 +1,8 @@
-// Copyright (c) 2025 Juantgd. All Rights Reserved.
+// Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
 #include "worker.h"
+
+#include <spdlog/spdlog.h>
 
 namespace jdocs {
 

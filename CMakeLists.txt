@@ -125,6 +125,14 @@ target_link_libraries(timer_test
     GTest::gtest_main
 )
 
+add_executable(http_parser_test tests/http_parser_test.cc)
+target_link_libraries(http_parser_test
+  PRIVATE
+    corelib
+    GTest::gtest_main
+)
+
 include(GoogleTest)
 gtest_discover_tests(bitmap_test)
 gtest_discover_tests(timer_test)
+gtest_discover_tests(http_parser_test)

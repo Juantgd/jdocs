@@ -4,6 +4,8 @@
 
 #include <string.h>
 
+#include <spdlog/spdlog.h>
+
 namespace jdocs {
 
 WebSocketHandler::WebSocketHandler(TcpConnection *connection)
@@ -33,11 +35,10 @@ next_loop:
       frame_handle();
       // 此处进行业务处理，所有数据已解析完毕
       if (handle_state_ == ws_handle_state_t::kWsHandleStateNormal) {
-        // service_handle(payload_cache);
-        // websocket echo server test.
         spdlog::info("service handle working...");
-        send_data_frame(connection_, payload_cache.data(),
-                        payload_cache.size());
+        std::string result =
+            connection_->ServiceHandle(std::move(payload_cache));
+        send_data_frame(connection_, result.data(), result.size());
         payload_cache.clear();
       }
     }

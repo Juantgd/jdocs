@@ -1,7 +1,7 @@
 // Copyright (c) 2025-2026 Juantgd. All Rights Reserved.
 
-#ifndef JDOCS_INCLUDE_PARSER_H_
-#define JDOCS_INCLUDE_PARSER_H_
+#ifndef JDOCS_INCLUDE_PROTOCOL_HANDLER_H_
+#define JDOCS_INCLUDE_PROTOCOL_HANDLER_H_
 
 #include <cstdlib>
 
