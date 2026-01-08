@@ -47,6 +47,15 @@ const char *request5[] = {
     "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n",
     "Sec-WebSocket-Version: 13\r\n\r\n"};
 
+const char *request6[] = {
+    "GET /test?file_list=abc.xls&file_list=word.docx&file_",
+    "list=video.mp4 HTTP/1.1\r\n",
+    "Host: example.com:8000\r\n",
+    "Upgrade: websocket\r\n",
+    "Connection: Upgrade\r\n",
+    "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\n",
+    "Sec-WebSocket-Version: 13\r\n\r\n"};
+
 TEST(HttpParserTest, HttpParserUriTest) {
   {
     HttpParser parser;
@@ -87,7 +96,7 @@ TEST(HttpParserTest, HttpParserUriTest) {
     }
     ASSERT_TRUE(parser.IsDone());
     ASSERT_STREQ(parser.location_.c_str(), "/path");
-    ASSERT_STREQ(parser.query_args_["参数1"].c_str(), "测试");
+    ASSERT_STREQ(parser.query_args_["参数1"][0].c_str(), "测试");
   }
   {
     HttpParser parser;
@@ -97,7 +106,22 @@ TEST(HttpParserTest, HttpParserUriTest) {
     }
     ASSERT_TRUE(parser.IsDone());
     ASSERT_STREQ(parser.location_.c_str(), "/search");
-    ASSERT_STREQ(parser.query_args_["kw"].c_str(), "操作系统");
-    ASSERT_STREQ(parser.query_args_["时间"].c_str(), "2026年");
+    ASSERT_EQ(parser.query_args_["kw"].size(), 1);
+    ASSERT_STREQ((parser.query_args_["kw"][0]).c_str(), "操作系统");
+    ASSERT_STREQ((parser.query_args_["时间"][0]).c_str(), "2026年");
+  }
+  {
+    HttpParser parser;
+    uint32_t count = sizeof(request6) / sizeof(request6[0]);
+    for (uint32_t i = 0; i < count; ++i) {
+      parser.ParserExecute((void *)request6[i], strlen(request6[i]));
+    }
+    ASSERT_TRUE(parser.IsDone());
+    ASSERT_STREQ(parser.location_.c_str(), "/test");
+    ASSERT_EQ(parser.query_args_["file_list"].size(), 3);
+    std::vector<std::string> &files = parser.query_args_["file_list"];
+    ASSERT_STREQ(files[0].c_str(), "abc.xls");
+    ASSERT_STREQ(files[1].c_str(), "word.docx");
+    ASSERT_STREQ(files[2].c_str(), "video.mp4");
   }
 }

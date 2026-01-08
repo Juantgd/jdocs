@@ -63,6 +63,7 @@ size_t HttpParser::ParserExecute(void *buffer, size_t length) {
         state_ = parser_state_t::kHttpParserAfterUri;
         index_ = 0;
         goto reexecute;
+        break;
       }
       if (ch == '?') {
         state_ = parser_state_t::kHttpParserUriQueryKey;
@@ -142,12 +143,14 @@ size_t HttpParser::ParserExecute(void *buffer, size_t length) {
           return 0;
         }
         auto it = query_args_.find(key_cache_);
-        // TODO: 该查询参数的值为一个数组，直接覆盖旧值
+        // 该查询参数的值为一个数组
         if (it != query_args_.end()) {
-          it->second = std::move(value_cache_);
+          it->second.emplace_back(std::move(value_cache_));
           key_cache_.clear();
         } else {
-          query_args_.insert({std::move(key_cache_), std::move(value_cache_)});
+          query_args_.emplace(
+              std::move(key_cache_),
+              std::vector<std::string>({std::move(value_cache_)}));
         }
         if (ch == ' ') {
           state_ = parser_state_t::kHttpParserAfterUri;

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace jdocs {
 
@@ -199,7 +200,7 @@ struct HttpParser {
   parser_header_state_t header_state_{0};
   // 缓存接收到的http请求报文中uri的值
   std::string location_;
-  std::unordered_map<std::string, std::string> query_args_;
+  std::unordered_map<std::string, std::vector<std::string>> query_args_;
   std::string key_cache_;
   std::string value_cache_;
   // 缓存origin字段的值
