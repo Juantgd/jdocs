@@ -35,10 +35,15 @@ struct Context {
     struct {
       // 高4位为操作码，低28位为连接id
       uint32_t op_conn_id;
-      // 文件描述符
-      uint16_t fd;
-      // 缓冲区id
-      uint16_t bid;
+      union {
+        struct {
+          // 文件描述符
+          uint16_t fd;
+          // 缓冲区id
+          uint16_t bid;
+        };
+        uint32_t low_addr;
+      };
     };
     uint64_t val;
   };
@@ -84,9 +89,7 @@ static inline CTContext *get_ctcontext(uint32_t high_addr, uint32_t low_addr) {
 static inline uint64_t ctcontext_encode(uint32_t conn_id, uint32_t ctx_addr) {
   struct Context context = {.op_conn_id = (__CROSS_THREAD_MSG << OP_SHIFT) |
                                           (conn_id & 0x0FFFFFFF),
-                            .fd = 0,
-                            .bid = 0};
-  context.val |= ctx_addr;
+                            .low_addr = ctx_addr};
   return context.val;
 }
 
@@ -130,7 +133,7 @@ static inline uint16_t cqe_to_fd(struct io_uring_cqe *cqe) {
 
 static inline uint32_t cqe_to_addr(struct io_uring_cqe *cqe) {
   struct Context context = {.val = cqe->user_data};
-  return context.val & 0x00000000FFFFFFFF;
+  return context.low_addr;
 }
 
 } // namespace jdocs

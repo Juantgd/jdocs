@@ -8,7 +8,6 @@
 #include <liburing.h>
 #include <spdlog/spdlog.h>
 
-#include "protocol/websocket/websocket_handler.h"
 #include "server.h"
 #include "utils/helpers.h"
 
@@ -202,6 +201,20 @@ int EventLoop::prep_cross_thread_msg(uint32_t conn_id, CTContext *context) {
   struct io_uring_sqe *sqe = GetSqe();
   uint64_t user_data = ctcontext_encode(conn_id, ctcontext_low_addr(context));
   int ring_fd = server_->ConnectionIdToRingFd(conn_id);
+  // 在同一个事件循环中
+  if (ring_fd == ring_.ring_fd) {
+    std::shared_ptr<TcpConnection> connection = worker_->GetConnection(conn_id);
+    if (!connection || connection->closed()) {
+      spdlog::info("[{}] conn_id: {} not online", worker_->GetName(), conn_id);
+      release_context(context);
+      return 0;
+    }
+    // 调用对应的处理函数进行处理
+    connection->CrossThreadMsgHandle(context->message.data(),
+                                     context->message.size());
+    release_context(context);
+    return 0;
+  }
   io_uring_prep_msg_ring(sqe, ring_fd, ctcontext_high_addr(context), user_data,
                          0);
   user_data_encode(sqe, __NOP, conn_id, 0, 0);
@@ -412,10 +425,9 @@ int EventLoop::handle_cross_thread_msg(struct io_uring_cqe *cqe) {
   CTContext *context = get_ctcontext(high_addr, low_addr);
   if (!context) {
     spdlog::error("[{}] got a null cross thread message", worker_->GetName());
-    release_context(context);
     return 0;
   }
-  spdlog::info("[{}] got a cross thread message, sender: {}",
+  spdlog::info("[{}] got a cross thread message, sender conn_id: {}",
                worker_->GetName(), context->snd_conn_id);
   std::shared_ptr<TcpConnection> connection =
       worker_->GetConnection(cqe_to_conn_id(cqe));
@@ -425,10 +437,9 @@ int EventLoop::handle_cross_thread_msg(struct io_uring_cqe *cqe) {
     release_context(context);
     return 0;
   }
-  if (connection->GetConnStage() == TcpConnection::kConnStageWebsocket) {
-    WebSocketHandler::send_data_frame(connection.get(), context->message.data(),
-                                      context->message.size());
-  }
+  // 调用对应的处理函数进行处理
+  connection->CrossThreadMsgHandle(context->message.data(),
+                                   context->message.size());
   release_context(context);
   return 0;
 }

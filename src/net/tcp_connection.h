@@ -26,10 +26,14 @@ public:
 
   // 当前连接阶段
   enum conn_stage_t { kConnStageHttp = 0, kConnStageWebsocket };
+  enum service_t { kServiceNone = 0, kServiceChat, kServiceDocument };
 
   inline int fd() const { return fd_; }
   inline uint32_t conn_id() const { return conn_id_; }
   inline bool closed() const { return closed_; }
+  inline uint32_t user_id() const { return user_id_; }
+
+  inline service_t GetServiceId() const { return service_id_; }
 
   // 获取已经读取的字节数
   inline uint64_t recv_bytes() const { return recv_bytes_; }
@@ -42,29 +46,28 @@ public:
   // 读操作完成处理函数，传入已读取的缓冲区地址和读取的字节数
   void RecvHandle(void *buffer, size_t length);
 
+  // 跨线程消息处函数
+  void CrossThreadMsgHandle(void *data, size_t length);
+
   // 业务处理函数
   std::string ServiceHandle(std::string data);
 
-  // 跨线程消息处理函数
-  void CrossThreadHandle(void *data, size_t length);
-
   // 关闭操作
-  void close() {
-    if (closed_)
-      return;
-    closed_ = !event_loop_->submit_cancel(fd_, conn_id_);
-  }
+  void close();
 
   inline EventLoop *GetEventLoop() { return event_loop_; }
 
   void transition_stage(conn_stage_t stage);
 
-  inline conn_stage_t GetConnStage() const { return stage_; }
+  bool switch_service(
+      std::string path,
+      std::unordered_map<std::string, std::vector<std::string>> query_args);
 
   inline TimeWheel::timer_node *GetTimer() { return &idle_timer_; }
 
 private:
   conn_stage_t stage_{kConnStageHttp};
+  service_t service_id_{kServiceNone};
   // 直接文件描述符
   int fd_;
   bool closed_{false};
@@ -88,6 +91,8 @@ private:
 
   // 指向该文件描述符所属的事件循环
   EventLoop *event_loop_;
+
+  static const std::unordered_map<std::string, service_t> router_;
 };
 
 } // namespace jdocs

@@ -20,6 +20,8 @@ static inline uint64_t get_current_millis() {
 
 void timespec_add_millis(timespec *ts, uint64_t millis);
 
+std::string get_datetime();
+
 } // namespace jdocs
 
 #endif

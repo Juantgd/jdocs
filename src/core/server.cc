@@ -40,6 +40,9 @@ int JdocsServer::Run() {
   return event_loop_.Run();
 }
 
+std::unordered_map<uint32_t, uint32_t> JdocsServer::user_map_;
+std::shared_mutex JdocsServer::mutex_;
+
 uint32_t JdocsServer::GetConnectionId(uint32_t user_id) {
   std::shared_lock<std::shared_mutex> lock_(mutex_);
   auto it = user_map_.find(user_id);

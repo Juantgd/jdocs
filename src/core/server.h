@@ -22,7 +22,9 @@ public:
   int Run();
 
   inline int ConnectionIdToRingFd(uint32_t conn_id) {
-    return worker_threads_[conn_id % nr_threads_].GetRingInstance()->ring_fd;
+    return worker_threads_[(conn_id - 1) % nr_threads_]
+        .GetRingInstance()
+        ->ring_fd;
   }
 
   inline uint32_t GetNextConnectionId() const { return conn_count_; }
@@ -33,18 +35,18 @@ public:
   inline int GetListeningFd() const { return serv_fd_; }
 
   // 通过用户id获取对应的连接id，不存在则返回0
-  uint32_t GetConnectionId(uint32_t user_id);
+  static uint32_t GetConnectionId(uint32_t user_id);
   // 添加连接id到连接对象的映射
-  void AddUserSession(uint32_t user_id, uint32_t conn_id);
+  static void AddUserSession(uint32_t user_id, uint32_t conn_id);
   // 删除连接id到连接对象的映射
-  void DelUserSession(uint32_t user_id);
+  static void DelUserSession(uint32_t user_id);
 
 private:
   EventLoop event_loop_;
   int serv_fd_;
   // 每个worker线程保存connection_id到TcpConnection实例的映射
   // 而server主线程保存user_id到connection_id的映射
-  std::unordered_map<uint32_t, uint32_t> user_map_;
+  static std::unordered_map<uint32_t, uint32_t> user_map_;
 
   std::vector<Worker> worker_threads_;
   unsigned int nr_threads_;
@@ -53,7 +55,7 @@ private:
   // nr_threads_获取该连接所处于的工作线程，方便向工作线程的io_uring实例发送请求
   uint32_t conn_count_{0};
 
-  std::shared_mutex mutex_;
+  static std::shared_mutex mutex_;
 };
 
 } // namespace jdocs

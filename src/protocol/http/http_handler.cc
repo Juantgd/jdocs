@@ -90,7 +90,10 @@ void HttpHandler::RecvDataHandle(void *buffer, size_t length) {
   }
 }
 
-bool HttpHandler::request_uri_parse() { return true; }
+bool HttpHandler::request_uri_parse() {
+  return connection_->switch_service(std::move(parser.location_),
+                                     std::move(parser.query_args_));
+}
 
 void HttpHandler::parsing_fail_handle() {
   spdlog::error("HTTP Protocol parser failed. error: {}", parser.GetError());
