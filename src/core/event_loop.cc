@@ -402,9 +402,6 @@ int EventLoop::handle_close(struct io_uring_cqe *cqe) {
   }
   spdlog::info("[{}] connection closed, fd: {}, conn_id: {}",
                worker_->GetName(), cqe_to_fd(cqe), cqe_to_conn_id(cqe));
-
-  spdlog::info("[{}] current time: {}", worker_->GetName(),
-               get_current_millis());
   worker_->DelConnection(cqe_to_conn_id(cqe));
   return 0;
 }

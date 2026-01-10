@@ -8,19 +8,19 @@
 namespace jdocs {
 
 namespace {
-thread_local std::string local_date("", 20);
+thread_local char local_date[20]{};
 thread_local time_t last_time = 0;
 } // namespace
 
 std::string get_datetime() {
   time_t now = time(nullptr);
-  if (now - last_time > 1) {
+  if (now - last_time >= 1) {
     struct tm timeinfo;
     localtime_r(&now, &timeinfo);
-    strftime(local_date.data(), 20, "%Y-%m-%d %H:%M:%S", &timeinfo);
+    strftime(local_date, 20, "%Y-%m-%d %H:%M:%S", &timeinfo);
     last_time = now;
   }
-  return local_date.substr(0, 19);
+  return local_date;
 }
 
 int create_listening_socket(int port) {

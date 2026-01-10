@@ -63,14 +63,6 @@ void HttpHandler::send_response_404() {
 void HttpHandler::RecvDataHandle(void *buffer, size_t length) {
   parser.ParserExecute(buffer, length);
   if (parser.IsDone()) {
-    void *send_buf;
-    int bidx = connection_->GetEventLoop()->get_send_buffer(&send_buf);
-    if (bidx == -1) {
-      // 没有可用的发送缓冲区，说明目前服务器负载有点大，所以直接关闭该连接
-      spdlog::error("not avaliable buffer to send. closing client.");
-      connection_->close();
-      return;
-    }
     if (request_uri_parse()) {
       // 升级为websocket协议
       send_response_101(parser.websocket_key_);
