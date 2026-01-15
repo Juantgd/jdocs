@@ -55,7 +55,7 @@ uint32_t JdocsServer::GetConnectionId(uint32_t user_id) {
 void JdocsServer::AddUserSession(uint32_t user_id, uint32_t conn_id) {
   bool ret;
   {
-    std::unique_lock<std::shared_mutex> lock_(mutex_);
+    std::lock_guard<std::shared_mutex> lock_(mutex_);
     ret = user_map_.insert({user_id, conn_id}).second;
   }
   if (!ret) {
@@ -65,7 +65,7 @@ void JdocsServer::AddUserSession(uint32_t user_id, uint32_t conn_id) {
 }
 
 void JdocsServer::DelUserSession(uint32_t user_id) {
-  std::unique_lock<std::shared_mutex> lock_(mutex_);
+  std::lock_guard<std::shared_mutex> lock_(mutex_);
   auto it = user_map_.find(user_id);
   if (it != user_map_.end()) {
     user_map_.erase(it);

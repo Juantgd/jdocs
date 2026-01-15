@@ -9,6 +9,8 @@
 
 #include <liburing.h>
 
+#include <spdlog/spdlog.h>
+
 namespace jdocs {
 
 namespace {
@@ -68,8 +70,10 @@ struct CTContext {
 
 static inline void release_context(CTContext *context) {
   // 当前引用计数为0，进行释放操作
-  if (context->ref_count.fetch_sub(1, std::memory_order_acq_rel) == 1)
+  if (context->ref_count.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+    spdlog::info("release cross thread message context successful!");
     delete context;
+  }
 }
 
 static inline uint32_t ctcontext_high_addr(CTContext *context) {

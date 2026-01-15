@@ -208,6 +208,8 @@ void WebSocketHandler::send_pong_frame(void *payload, size_t length) {
 
 void WebSocketHandler::send_data_frame(TcpConnection *connection, void *data,
                                        size_t length) {
+  if (length == 0)
+    return;
   void *send_buf;
   int bidx;
   bool fin_flag = true, once_flag = true;

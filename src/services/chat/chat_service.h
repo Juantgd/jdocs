@@ -9,25 +9,23 @@
 
 namespace jdocs {
 
+struct chat_message {
+  uint32_t user_id;
+  std::string message;
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(chat_message, user_id, message);
+};
+
+struct sender_message {
+  uint32_t user_id;
+  std::string date;
+  std::string message;
+  NLOHMANN_DEFINE_TYPE_INTRUSIVE(sender_message, user_id, date, message);
+};
+
 class ChatService : public ServiceHandler {
 public:
   ChatService(TcpConnection *connection);
   ~ChatService() = default;
-
-  struct chat_message {
-    uint32_t user_id;
-    std::string message;
-  };
-
-  struct sender_message {
-    uint32_t user_id;
-    std::string date;
-    std::string message;
-  };
-
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(chat_message, user_id, message);
-
-  NLOHMANN_DEFINE_TYPE_INTRUSIVE(sender_message, user_id, date, message);
 
   bool parse_parameters(
       std::unordered_map<std::string, std::vector<std::string>> args) override;

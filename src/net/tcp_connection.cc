@@ -7,8 +7,8 @@
 #include "core/server.h"
 #include "protocol/http/http_handler.h"
 #include "protocol/websocket/websocket_handler.h"
-#include "services/chat_service.h"
-#include "services/document_service.h"
+#include "services/chat/chat_service.h"
+#include "services/document/document_service.h"
 
 namespace jdocs {
 
@@ -42,6 +42,8 @@ void TcpConnection::RecvHandle(void *buffer, size_t length) {
 
 // 跨线程消息处函数
 void TcpConnection::CrossThreadMsgHandle(void *data, size_t length) {
+  if (closed_)
+    return;
   if (stage_ == kConnStageWebsocket) {
     WebSocketHandler::send_data_frame(this, data, length);
   }

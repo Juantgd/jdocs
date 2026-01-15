@@ -22,7 +22,7 @@ bool ChatService::parse_parameters(
 std::string ChatService::handle(std::string data) {
   spdlog::info("Chat Service: user_id: {}", connection_->user_id());
   try {
-    json_ = nlohmann::json::parse(data);
+    json_ = nlohmann::json::parse(std::move(data));
     chat_message msg = json_.get<chat_message>();
     spdlog::info("receive message from user_id: {}", connection_->user_id());
     sender_message send_msg = {connection_->user_id(), get_datetime(),
@@ -35,6 +35,7 @@ std::string ChatService::handle(std::string data) {
       CTContext *ctx = new CTContext(1, connection_->conn_id(), json_.dump());
       connection_->GetEventLoop()->prep_cross_thread_msg(conn_id, ctx);
     }
+    json_.clear();
     return R"({"success":true,"message":"sent successfully!"})";
   } catch (const nlohmann::json::exception &e) {
     spdlog::error("json parser failed. error: {}", e.what());
